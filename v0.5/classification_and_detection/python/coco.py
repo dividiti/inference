@@ -85,7 +85,7 @@ class Coco(dataset.Dataset):
 
             os.makedirs(os.path.dirname(os.path.join(self.cache_dir, image_name)), exist_ok=True)
             dst = os.path.join(self.cache_dir, image_name)
-            if self.cache == 0 or not os.path.exists(dst + ".npy"):##added the cache, that was not in the original mlperf
+            if self.use_cache == 0 or not os.path.exists(dst + ".npy"):##added the cache, that was not in the original mlperf
                 # cache a preprocessed version of the image
                 img_org = cv2.imread(src)
                 processed = self.pre_process(img_org, need_transpose=self.need_transpose, dims=self.image_size)
