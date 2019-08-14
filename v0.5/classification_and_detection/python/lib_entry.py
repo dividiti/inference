@@ -45,7 +45,7 @@ SUPPORTED_DATASETS = {
     "imagenet_mobilenet":
         (imagenet.Imagenet, dataset.pre_process_mobilenet, dataset.PostProcessArgMax(offset=-1),
          {"image_size": [224, 224, 3]}),
-    "coco":
+    "coco-standard":
         (coco.Coco, dataset.pre_process_coco_mobilenet, coco.PostProcessCoco(),
 	 {}),
 #         {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}),
@@ -79,24 +79,27 @@ LATENCY_SSD_MOBILENET = "0.010"
 LATENCY_SSD_RESNET34 = "0.100"
 
 SUPPORTED_PROFILES = {
-    "default_tf_zoo": {
+    "default_tf_object_det_zoo": {
         "inputs": "image_tensor:0",
         "outputs": "num_detections:0,detection_boxes:0,detection_scores:0,detection_classes:0",
-        "dataset": "coco",
+        "dataset": "coco-standard",
         "backend": "tensorflow",
-        "cache": 0,
-        "queries-single": 1024,
-        "queries-multi": 24576,
-        "max-latency": DEFAULT_LATENCY,
-        "max-batchsize": 32,
-        "time": 60,
-        "scenario":[SCENARIO_MAP["Server"]],
-        "qps": 100, 
-	"max-latency": [0.2],
-	"accuracy" : 0,
-	"num_threads" : 1,
-
     },
+     #   "cache": 0,
+     #   "queries-single": 1024,
+     #   "queries-multi": 24576,
+     #   "queries-offline": 24576,
+     #   "max-latency": DEFAULT_LATENCY,
+     #   "max-batchsize": 32,
+     #   "time": 60,
+     #   "scenario":[SCENARIO_MAP["Offline"]],
+     ##    "scenario":[SCENARIO_MAP["Server"]],
+     #   "qps": 100, 
+     #   "max-latency": [0.2],
+     #   "accuracy" : 0,
+     #   "num_threads" : 1,
+     
+    #},
 
     # resnet
     "resnet50-tf": {
@@ -225,9 +228,9 @@ def get_args(params):
 
     # don't use defaults in argparser. Instead we default to a dict, override that with a profile
     # and take this as default unless command line give
-    defaults = SUPPORTED_PROFILES["default_tf_zoo"]
+    defaults = SUPPORTED_PROFILES["default_tf_object_det_zoo"]
 
-    if params["PROFILE"] != 0:
+    if params["PROFILE"] != 'default_tf_object_det_zoo':
         profile = SUPPORTED_PROFILES[params["PROFILE"]]
         defaults.update(profile)
 #    for k, v in defaults.items():
@@ -240,21 +243,21 @@ def get_args(params):
 #        args.outputs = args.outputs.split(",")
 #TODO redo the split of string to have array with diff latencies
 #    if args.max_latency:
-#        args.max_latency = [float(i) for i in args.max_latency.split(",")]
-    if params["SCENARIO"] != '':
-        try:
-            defaults['scenario'] =[SCENARIO_MAP[scenario] for scenario in params["SCENARIO"].split(",")] 
-        except:
-            parser.error("valid scanarios:" + str(list(SCENARIO_MAP.keys())))
+    params["MAX_LATENCY"] = [float(i) for i in params["MAX_LATENCY"].split(",")]
+    try:
+        params["SCENARIO"] =[SCENARIO_MAP[scenario] for scenario in params["SCENARIO"].split(",")] 
+    except:
+        parser.error("valid scanarios:" + str(list(SCENARIO_MAP.keys())))
     
-    if params["TIME"] != 0:
-        defaults['time'] = params["TIME"]
-    if params["QPS"] != 0:
-        defaults['qps'] = params["QPS"]
-    if params["ACCURACY"] != False:
-        defaults['accuracy'] = params["ACCURACY"]
-    if params["NUM_THREADS"] != 1:
-        defaults['num_threads'] = params["NUM_THREADS"]
+#    if params["TIME"] != 0:
+#        defaults['time'] = params["TIME"]
+#    if params["QPS"] != 0:
+#        defaults['qps'] = params["QPS"]
+#    if params["ACCURACY"] != False:
+#        defaults['accuracy'] = params["ACCURACY"]
+#    if params["NUM_THREADS"] != 1:
+#        defaults['num_threads'] = params["NUM_THREADS"]
+    #split tensor string into arrays
     defaults['inputs'] =  defaults['inputs'].split(",") 
     defaults['outputs'] = defaults['outputs'].split(",") 
 
@@ -306,6 +309,9 @@ class RunnerBase:
         self.take_accuracy = False
         self.max_batchsize = max_batchsize
         self.result_timing = []
+        self.feeds = []
+        self.ids = []
+        self.results = []
 
     def handle_tasks(self, tasks_queue):
         pass
@@ -320,8 +326,14 @@ class RunnerBase:
         # run the prediction
         processed_results = []
         try:
-            results = self.model.predict({self.model.inputs[0]: qitem.img})
+            feed = {self.model.inputs[0]: qitem.img}
+            self.feeds.append(feed)
+            self.ids.append(qitem.content_id)
+            results = self.model.predict(feed)
+            #results = self.model.predict({self.model.inputs[0]: qitem.img})
+            #print("flag")
             processed_results = self.post_process(results, qitem.content_id, qitem.label, self.result_dict)
+            self.results.append(results)
             if self.take_accuracy:
                 self.post_process.add_results(processed_results)
                 self.result_timing.append(time.time() - qitem.start)
@@ -335,7 +347,7 @@ class RunnerBase:
             response = []
             for idx, query_id in enumerate(qitem.query_id):
                 response_array = array.array("B", np.array(processed_results[idx], np.float32).tobytes())
-                response_array_refs.append(response_array)
+                response_array_refs.append(response_array)## what is this for????????
                 bi = response_array.buffer_info()
                 response.append(lg.QuerySampleResponse(query_id, bi[0], bi[1]))
             lg.QuerySamplesComplete(response)
@@ -422,10 +434,10 @@ def add_results(final_results, name, result_dict, result_list, took, show_accura
     acc_str = ""
     if show_accuracy:
         result["accuracy"] = 100. * result_dict["good"] / result_dict["total"]
-        acc_str = ", acc={:.2f}".format(result["accuracy"])
+        acc_str = ", acc={:.4f}".format(result["accuracy"])
         if "mAP" in result_dict:
             result["mAP"] = result_dict["mAP"]
-            acc_str += ", mAP={:.2f}".format(result_dict["mAP"])
+            acc_str += ", mAP={:.15f}".format(result_dict["mAP"])
 
     # add the result to the result dict
     final_results[name] = result
@@ -458,7 +470,8 @@ def mlperf_process(params):
     if not count:
 #        if not args.accuracy:
         count = 1
-
+    print ("##########################################################")
+    print (count)
     # dataset to use
     wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
     #wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
@@ -468,7 +481,7 @@ def mlperf_process(params):
                         name=params["DATASET_TYPE"],
                         image_format=image_format,
                         pre_process=pre_proc,
-                        use_cache=0,    #now is set to 0, is a commandline arg which i dont know whats it is.
+                        use_cache=params["CACHE"],    #now is set to 0, is a commandline arg which i dont know whats it is.
                         count=count, **kwargs)
     # load model to backend
     model = backend.load(params["FROZEN_GRAPH"], inputs=config['inputs'], outputs=config['outputs'])
@@ -483,15 +496,15 @@ def mlperf_process(params):
     # make one pass over the dataset to validate accuracy
     #
     count = ds.get_item_count()
-
+    
     # warmup
     ds.load_query_samples([0])
     for _ in range(5):
         img, _ = ds.get_samples([0])
         _ = backend.predict({backend.inputs[0]: img})
     ds.unload_query_samples(None)
-
-    for scenario in config["scenario"]:
+    debug_feeds = []
+    for scenario in params["SCENARIO"]:
         runner_map = {
             lg.TestScenario.SingleStream: RunnerBase,
             lg.TestScenario.MultiStream: QueueRunner,
@@ -499,7 +512,7 @@ def mlperf_process(params):
             lg.TestScenario.Offline: QueueRunner
         }
         print(scenario)
-        runner = runner_map[scenario](model, ds, config['num_threads'], post_proc=post_proc, max_batchsize=params["BATCH_SIZE"])
+        runner = runner_map[scenario](model, ds, params["NUM_THREADS"], post_proc=post_proc, max_batchsize=params["BATCH_SIZE"])
 
         def issue_queries(query_samples):
             runner.enqueue(query_samples)
@@ -515,33 +528,31 @@ def mlperf_process(params):
         settings.scenario = scenario
         settings.mode = lg.TestMode.PerformanceOnly
 
-        if config['accuracy']:
+        if params["ACCURACY"]:
             settings.mode = lg.TestMode.AccuracyOnly
 
 #        if args.time:
             # override the time we want to run
-        settings.min_duration_ms = config['time'] * MILLI_SEC
-        settings.max_duration_ms = config['time'] * MILLI_SEC
+        settings.min_duration_ms = params["TIME"] * MILLI_SEC
+        settings.max_duration_ms = params["TIME"] * MILLI_SEC
 
         #if args.qps:
-        qps = float(config['qps'])
+        qps = float(params["QPS"])
         settings.server_target_qps = qps
         settings.offline_expected_qps = qps
 
-#TODO find default values for this, and create variables in dict
-#        if scenario == lg.TestScenario.SingleStream:
-#            settings.min_query_count = args.queries_single
-#            settings.max_query_count = args.queries_single
-#        elif scenario == lg.TestScenario.MultiStream:
-#            settings.min_query_count = args.queries_multi
-#            settings.max_query_count = args.queries_multi
-#            settings.multi_stream_samples_per_query = 4
-        ##elif scenario == lg.TestScenario.Server:
-        if scenario == lg.TestScenario.Server:
-            max_latency = config['max-latency']
-#        elif scenario == lg.TestScenario.Offline:
-#            settings.min_query_count = args.queries_offline
-#            settings.max_query_count = args.queries_offline
+        if scenario == lg.TestScenario.SingleStream:
+            settings.min_query_count = params["QUERIES_SINGLE"]
+            settings.max_query_count = params["QUERIES_SINGLE"]
+        elif scenario == lg.TestScenario.MultiStream:
+            settings.min_query_count = params["QUERIES_MULTI"]
+            settings.max_query_count = params["QUERIES_MULTI"]
+            settings.multi_stream_samples_per_query = 4    ###was hardcoded in the original.
+        elif scenario == lg.TestScenario.Server:
+            max_latency = params["MAX_LATENCY"]
+        elif scenario == lg.TestScenario.Offline:
+            settings.min_query_count = params["QUERIES_OFFLINE"]
+            settings.max_query_count = params["QUERIES_OFFLINE"]
 
         sut = lg.ConstructSUT(issue_queries, flush_queries, process_latencies)
         qsl = lg.ConstructQSL(count, min(count, 1000), ds.load_query_samples, ds.unload_query_samples)
@@ -552,29 +563,43 @@ def mlperf_process(params):
                 settings.server_target_latency_ns = int(target_latency * NANO_SEC)
 
                 result_dict = {"good": 0, "total": 0, "scenario": str(scenario)}
-                runner.start_run(result_dict, config['accuracy'])
+                runner.start_run(result_dict, params["ACCURACY"])
                 lg.StartTest(sut, qsl, settings)
 
                 if not last_timeing:
                     last_timeing = runner.result_timing
-                if config['accuracy']:
+                if params["ACCURACY"]:
                     post_proc.finalize(result_dict, ds, output_dir=params["CUR_DIR"])
                 add_results(final_results, "{}-{}".format(scenario, target_latency),
-                            result_dict, last_timeing, time.time() - ds.last_loaded, config['accuracy'])
+                            result_dict, last_timeing, time.time() - ds.last_loaded, params["ACCURACY"])
         else:
             log.info("starting {}".format(scenario))
             result_dict = {"good": 0, "total": 0, "scenario": str(scenario)}
-            runner.start_run(result_dict, config['accuracy'])
+            runner.start_run(result_dict, params["ACCURACY"])
             lg.StartTest(sut, qsl, settings)
 
             if not last_timeing:
                 last_timeing = runner.result_timing
-            if config['accuracy']:
+            if params["ACCURACY"]:
                 post_proc.finalize(result_dict, ds, output_dir=params["CUR_DIR"])
             add_results(final_results, "{}".format(scenario),
-                        result_dict, last_timeing, time.time() - ds.last_loaded, args.accuracy)
+                        result_dict, last_timeing, time.time() - ds.last_loaded, params["ACCURACY"])
 
         runner.finish()
+        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+        debug_feeds = runner.feeds
+        debug_ids = []
+        debug_sizes = []
+        debug_results = runner.results 
+        for bid in runner.ids:
+            tmp_id = []
+            tmp_img = []
+            for iid in bid:
+                tmp_id.append(ds.image_ids[iid])
+                tmp_img.append(ds.image_sizes[iid])
+            debug_ids.append(tmp_id)
+            debug_sizes.append(tmp_img)
+
         lg.DestroyQSL(qsl)
         lg.DestroySUT(sut)
 
@@ -584,7 +609,7 @@ def mlperf_process(params):
 #    if args.output:
     with open('output.json', "w") as f:
         json.dump(final_results, f, sort_keys=True, indent=4)
-
+    return debug_feeds,debug_ids,debug_sizes,debug_results
 
 
 if __name__ == "__main__":
