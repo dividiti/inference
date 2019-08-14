@@ -85,22 +85,12 @@ SUPPORTED_PROFILES = {
         "dataset": "coco-standard",
         "backend": "tensorflow",
     },
-     #   "cache": 0,
-     #   "queries-single": 1024,
-     #   "queries-multi": 24576,
-     #   "queries-offline": 24576,
-     #   "max-latency": DEFAULT_LATENCY,
-     #   "max-batchsize": 32,
-     #   "time": 60,
-     #   "scenario":[SCENARIO_MAP["Offline"]],
-     ##    "scenario":[SCENARIO_MAP["Server"]],
-     #   "qps": 100, 
-     #   "max-latency": [0.2],
-     #   "accuracy" : 0,
-     #   "num_threads" : 1,
-     
-    #},
-
+    "default_tf_trt_object_det_zoo": {
+        "inputs": "import/image_tensor:0",
+        "outputs": "import/num_detections:0,import/detection_boxes:0,import/detection_scores:0,import/detection_classes:0",
+        "dataset": "coco-standard",
+        "backend": "tensorflowRT",
+    },
     # resnet
     "resnet50-tf": {
         "inputs": "input_tensor:0",
@@ -268,6 +258,9 @@ def get_backend(backend):
     if backend == "tensorflow":
         from backend_tf import BackendTensorflow
         backend = BackendTensorflow()
+    elif backend == "tensorflowRT":
+        from backend_tf_trt import BackendTensorflowRT
+        backend = BackendTensorflowRT()
     elif backend == "onnxruntime":
         from backend_onnxruntime import BackendOnnxruntime
         backend = BackendOnnxruntime()
@@ -459,7 +452,10 @@ def mlperf_process(params):
     print (config)
     # find backend
     backend = get_backend(config['backend'])
-
+    print(backend.name())
+    if backend.name() == 'tensorflowRT':
+        print ("##########################################################")
+        backend.set_extra_params(params)
     # override image format if given
     #image_format = config['data_format'] if config['data_format'] else backend.image_format()
     image_format = backend.image_format()
