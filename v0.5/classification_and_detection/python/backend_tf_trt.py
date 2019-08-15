@@ -44,7 +44,8 @@ class BackendTensorflowRT(backend.Backend):
  #       if num_processors > 0: 
  #           tf_config.device_count["CPU"] = num_processors
         
-        
+        # to create the trt graph i need to remove the import/ string from the tensor names used in the inference (and thus given in the supported profiles).
+        outputs = [ x.replace('import/','') for x in self.outputs ]
         tf.compat.v1.Graph().as_default()
         session = tf.compat.v1.Session(config=tf_config)
         graph_def = tf.compat.v1.GraphDef()
@@ -53,7 +54,7 @@ class BackendTensorflowRT(backend.Backend):
             tf.import_graph_def(graph_def, name='')
         trt_graph = trt.create_inference_graph(
               input_graph_def=graph_def,
-              outputs=['num_detections:0','detection_boxes:0','detection_scores:0','detection_classes:0'],
+              outputs=outputs, 
               max_batch_size=self.params["BATCH_SIZE"],
               max_workspace_size_bytes=4000000000,
               is_dynamic_op=True if self.params["TENSORRT_DYNAMIC"]==1 else False,
@@ -61,7 +62,7 @@ class BackendTensorflowRT(backend.Backend):
               )
         tf.import_graph_def(
               trt_graph,
-              return_elements=['num_detections:0','detection_boxes:0','detection_scores:0','detection_classes:0'])
+              return_elements=outputs) 
         # TODO: support checkpoint and saved_model formats?
 #        graph_def = graph_pb2.GraphDef()
 #        with open(model_path, "rb") as f:

@@ -100,6 +100,12 @@ SUPPORTED_PROFILES = {
         "dataset": "coco-yolo",
         "backend": "tensorflow",
     },
+    "tf_yolo_trt": {
+        "inputs": "import/input/input_data:0",
+        "outputs": "import/pred_sbbox/concat_2:0,import/pred_mbbox/concat_2:0,import/pred_lbbox/concat_2:0",
+        "dataset": "coco-yolo",
+        "backend": "tensorflowRT",
+    },
     # resnet
     "resnet50-tf": {
         "inputs": "input_tensor:0",
