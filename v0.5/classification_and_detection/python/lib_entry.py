@@ -52,6 +52,9 @@ SUPPORTED_DATASETS = {
     "coco-300":
         (coco.Coco, dataset.pre_process_coco_mobilenet, coco.PostProcessCoco(),
          {"image_size": [300, 300, 3]}),
+    "coco-yolo":
+        (coco.Coco, dataset.pre_process_coco_yolo, coco.PostProcessCoco(),
+         {"image_size": [416, 416, 3]}),
     "coco-300-pt":
         (coco.Coco, dataset.pre_process_coco_pt_mobilenet, coco.PostProcessCocoPt(False,0.3),
          {"image_size": [300, 300, 3]}),         
@@ -90,6 +93,12 @@ SUPPORTED_PROFILES = {
         "outputs": "import/num_detections:0,import/detection_boxes:0,import/detection_scores:0,import/detection_classes:0",
         "dataset": "coco-standard",
         "backend": "tensorflowRT",
+    },
+    "tf_yolo": {
+        "inputs": "input/input_data:0",
+        "outputs": "pred_sbbox/concat_2:0,pred_mbbox/concat_2:0,pred_lbbox/concat_2:0",
+        "dataset": "coco-yolo",
+        "backend": "tensorflow",
     },
     # resnet
     "resnet50-tf": {
@@ -302,9 +311,10 @@ class RunnerBase:
         self.take_accuracy = False
         self.max_batchsize = max_batchsize
         self.result_timing = []
-        self.feeds = []
-        self.ids = []
-        self.results = []
+        self.batch_count = 0
+#        self.feeds = []
+#        self.ids = []
+#        self.results = []
 
     def handle_tasks(self, tasks_queue):
         pass
@@ -320,13 +330,15 @@ class RunnerBase:
         processed_results = []
         try:
             feed = {self.model.inputs[0]: qitem.img}
-            self.feeds.append(feed)
-            self.ids.append(qitem.content_id)
+ #           self.feeds.append(feed)
+ #           self.ids.append(qitem.content_id)
             results = self.model.predict(feed)
             #results = self.model.predict({self.model.inputs[0]: qitem.img})
-            #print("flag")
+            print("flag batch done", self.batch_count)
+            self.batch_count += 1
             processed_results = self.post_process(results, qitem.content_id, qitem.label, self.result_dict)
-            self.results.append(results)
+            print("flag batch postprocessed")
+#            self.results.append(results)
             if self.take_accuracy:
                 self.post_process.add_results(processed_results)
                 self.result_timing.append(time.time() - qitem.start)
@@ -469,10 +481,11 @@ def mlperf_process(params):
     print ("##########################################################")
     print (count)
     # dataset to use
-    wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
-    #wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
-    kwargs = {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}
-    ds = wanted_dataset(data_path=os.path.dirname(params["IMAGES_DIR"]),
+    if config['dataset'] != 'coco-yolo':
+        wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
+        #wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
+        kwargs = {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}
+        ds = wanted_dataset(data_path=os.path.dirname(params["IMAGES_DIR"]),
                         image_list=None,
                         name=params["DATASET_TYPE"],
                         image_format=image_format,
@@ -480,6 +493,20 @@ def mlperf_process(params):
                         use_cache=params["CACHE"],    #now is set to 0, is a commandline arg which i dont know whats it is.
                         count=count, **kwargs)
     # load model to backend
+    else: 
+        wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
+        #wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
+        kwargs = {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}
+        ds = wanted_dataset(data_path=os.path.dirname(params["IMAGES_DIR"]),
+                        image_list=None,
+                        name=params["DATASET_TYPE"],
+                        image_format=image_format,
+                        pre_process=pre_proc,
+                        use_cache=params["CACHE"],    #now is set to 0, is a commandline arg which i dont know whats it is.
+                        count=count, **kwargs)
+        post_proc = coco.PostProcessCocoYolo(ds)
+
+
     model = backend.load(params["FROZEN_GRAPH"], inputs=config['inputs'], outputs=config['outputs'])
     final_results = {
         "runtime": model.name(),
@@ -582,19 +609,19 @@ def mlperf_process(params):
                         result_dict, last_timeing, time.time() - ds.last_loaded, params["ACCURACY"])
 
         runner.finish()
-        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-        debug_feeds = runner.feeds
-        debug_ids = []
-        debug_sizes = []
-        debug_results = runner.results 
-        for bid in runner.ids:
-            tmp_id = []
-            tmp_img = []
-            for iid in bid:
-                tmp_id.append(ds.image_ids[iid])
-                tmp_img.append(ds.image_sizes[iid])
-            debug_ids.append(tmp_id)
-            debug_sizes.append(tmp_img)
+#        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
+#        debug_feeds = runner.feeds
+#        debug_ids = []
+#        debug_sizes = []
+#        debug_results = runner.results 
+#        for bid in runner.ids:
+#            tmp_id = []
+#            tmp_img = []
+#            for iid in bid:
+#                tmp_id.append(ds.image_ids[iid])
+#                tmp_img.append(ds.image_sizes[iid])
+#            debug_ids.append(tmp_id)
+#            debug_sizes.append(tmp_img)
 
         lg.DestroyQSL(qsl)
         lg.DestroySUT(sut)
@@ -605,7 +632,7 @@ def mlperf_process(params):
 #    if args.output:
     with open('output.json', "w") as f:
         json.dump(final_results, f, sort_keys=True, indent=4)
-    return debug_feeds,debug_ids,debug_sizes,debug_results
+#    return debug_feeds,debug_ids,debug_sizes,debug_results
 
 
 if __name__ == "__main__":
