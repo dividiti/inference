@@ -222,6 +222,25 @@ def pre_process_coco_mobilenet(img, dims=None, need_transpose=False):
         img = img.transpose([2, 0, 1])
     return img
 
+def pre_process_coco_yolo(img, dims=(416,416), need_transpose=False):
+    orig_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    image = cv2.cvtColor(orig_image, cv2.COLOR_BGR2RGB).astype(np.float32)
+
+    ih, iw    = 416,416   ##They are equal, and the model requires that size so must be hardcoded.
+    h,  w, _  = image.shape
+
+    scale = min(iw/w, ih/h)
+    nw, nh  = int(scale * w), int(scale * h)
+    image_resized = cv2.resize(image, (nw, nh))
+
+    image_paded = np.full(shape=[ih, iw, 3], fill_value=128.0)
+    dw, dh = (iw - nw) // 2, (ih-nh) // 2
+    image_paded[dh:nh+dh, dw:nw+dw, :] = image_resized
+    image_paded = image_paded / 255.
+#    image_paded = image_paded[np.newaxis, ...]
+    return image_paded
+
+
 
 def pre_process_coco_pt_mobilenet(img, dims=None, need_transpose=False):
     img = maybe_resize(img, dims)
