@@ -196,7 +196,7 @@ class PostProcessCoco:
             pp = []
             for detection in detections:
                 pp.append({"image_id": int(detection[0]),
-                           "image_loc": ds.get_item_loc("{:012d}.jpg".format(int(detection[0]))),
+                           "image_loc": ds.get_item_loc("val2017/{:012d}.jpg".format(int(detection[0]))),
                            "category_id": int(detection[6]),
                            "bbox": [float(detection[1]), float(detection[2]),
                                     float(detection[3]), float(detection[4])],
@@ -391,7 +391,7 @@ class PostProcessCocoYolo:
             pp = []
             for detection in detections:
                 pp.append({"image_id": int(detection[0]),
-                           "image_loc": ds.get_item_loc("{:012d}.jpg".format(int(detection[0]))),
+                           "image_loc": ds.get_item_loc("val2017/{:012d}.jpg".format(int(detection[0]))),
                            "category_id": int(detection[6]),
                            "bbox": [float(detection[1]), float(detection[2]),
                                     float(detection[3]), float(detection[4])],
