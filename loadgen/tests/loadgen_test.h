@@ -13,6 +13,9 @@ limitations under the License.
 /// \file
 /// \brief A minimal test framework.
 
+#ifndef MLPERF_LOADGEN_TESTS_LOADGEN_TEST_H_
+#define MLPERF_LOADGEN_TESTS_LOADGEN_TEST_H_
+
 #include <algorithm>
 #include <exception>
 #include <functional>
@@ -95,7 +98,7 @@ class Test {
   /// \brief Maps registered test names to a callback.
   using TestMap = std::multimap<const char*, std::function<void()>>;
 
-  /// \brief The regeistered tests.
+  /// \brief The registered tests.
   /// \details Wraps a static local to avoid undefined initialization order
   /// and guarantee it is initialized before the first test registers itself.
   static TestMap& tests() {
@@ -192,3 +195,5 @@ class Test {
 // The testing namespace exists for documentation purposes.
 // Export the testing namespace for all files that define tests.
 using namespace testing;
+
+#endif  // MLPERF_LOADGEN_TESTS_LOADGEN_TEST_H_
