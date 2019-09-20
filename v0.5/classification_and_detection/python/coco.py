@@ -9,6 +9,7 @@ import logging
 import os
 import time
 
+import sys
 import cv2
 import numpy as np
 from pycocotools.cocoeval import COCOeval
@@ -121,7 +122,7 @@ class Coco(dataset.Dataset):
         return img, self.label_list[nr]
 
     def get_item_loc(self, nr):
-        src = os.path.join(self.data_path, nr)#self.image_list[nr])
+        src = os.path.join(self.data_path, self.image_list[nr])
         return src
 
 class PostProcessCoco:
@@ -369,7 +370,7 @@ class PostProcessCocoYolo:
             
             bboxes= np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
             bboxes= self.nms (bboxes, 0.45, method='nms')
-            img_num = self.ds.image_ids[ids[idx]]
+            img_num = float(ids[idx])  #self.ds.image_ids[ids[idx]]
             for bbox in bboxes:
                         detection = [img_num, bbox[0],bbox[1],bbox[2],bbox[3],bbox[4],bbox[5]]
                         postprocessed_results[idx].append(np.array(detection))
@@ -387,9 +388,13 @@ class PostProcessCocoYolo:
         result_dict["total"] += self.total
         image_ids = []
         detections = []
+        image_indices = []
         for batch in range(0, len(self.results)):
             for idx in range(0, len(self.results[batch])):
                 detection = self.results[batch][idx]
+                image_idx = int(detection[0])
+                image_indices.append(image_idx)
+                detection[0] = ds.image_ids[image_idx]
                 # box comes from model as: ymin, xmin, ymax, xmax
                 xmin = detection[1]# * org_h
                 ymin = detection[2]# * org_w
@@ -407,7 +412,8 @@ class PostProcessCocoYolo:
         if output_dir:
             # for debugging
             pp = []
-            for detection in detections:
+            for image_idx, detection in zip(image_indices, detections):
+                print (image_idx,file=sys.stderr)
                 pp.append({"image_id": int(detection[0]),
                            "image_loc": ds.get_item_loc(image_idx),
                            "category_id": int(detection[6]),
