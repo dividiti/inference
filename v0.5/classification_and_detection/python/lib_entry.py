@@ -57,7 +57,7 @@ SUPPORTED_DATASETS = {
          {"image_size": [416, 416, 3]}),
     "coco-300-pt":
         (coco.Coco, dataset.pre_process_coco_pt_mobilenet, coco.PostProcessCocoPt(False,0.3),
-         {"image_size": [300, 300, 3]}),         
+         {"image_size": [300, 300, 3]}),
     "coco-1200":
         (coco.Coco, dataset.pre_process_coco_resnet34, coco.PostProcessCoco(),
          {"image_size": [1200, 1200, 3]}),
@@ -154,7 +154,7 @@ SUPPORTED_PROFILES = {
     "ssd-mobilenet-onnxruntime": {
         "dataset": "coco-300",
         "outputs": "num_detections:0,detection_boxes:0,detection_scores:0,detection_classes:0",
-        "backend": "onnxruntime",        
+        "backend": "onnxruntime",
         "data-format": "NHWC",
         "max-latency": LATENCY_SSD_MOBILENET,
     },
@@ -198,6 +198,7 @@ SUPPORTED_PROFILES = {
 last_timeing = []
 
 
+# [DVDT] TODO Update to the latest official code, including handling mlperf.conf.
 def get_args(params):
     """Parse commandline.
     parser = argparse.ArgumentParser()
@@ -250,10 +251,10 @@ def get_args(params):
 #    if args.max_latency:
     params["MAX_LATENCY"] = [float(i) for i in params["MAX_LATENCY"].split(",")]
     try:
-        params["SCENARIO"] =[SCENARIO_MAP[scenario] for scenario in params["SCENARIO"].split(",")] 
+        params["SCENARIO"] =[SCENARIO_MAP[scenario] for scenario in params["SCENARIO"].split(",")]
     except:
         parser.error("valid scanarios:" + str(list(SCENARIO_MAP.keys())))
-    
+
 #    if params["TIME"] != 0:
 #        defaults['time'] = params["TIME"]
 #    if params["QPS"] != 0:
@@ -263,8 +264,8 @@ def get_args(params):
 #    if params["NUM_THREADS"] != 1:
 #        defaults['num_threads'] = params["NUM_THREADS"]
     #split tensor string into arrays
-    defaults['inputs'] =  defaults['inputs'].split(",") 
-    defaults['outputs'] = defaults['outputs'].split(",") 
+    defaults['inputs'] =  defaults['inputs'].split(",")
+    defaults['outputs'] = defaults['outputs'].split(",")
 
     return defaults
 
@@ -273,7 +274,7 @@ def get_backend(backend):
     if backend == "tensorflow":
         from backend_tf import BackendTensorflow
         backend = BackendTensorflow()
-    elif backend == "tensorflowRT":
+    elif backend == "tensorflowRT": # [DVDT] New TensorFlow backend: TensorRT.
         from backend_tf_trt import BackendTensorflowRT
         backend = BackendTensorflowRT()
     elif backend == "onnxruntime":
@@ -287,7 +288,7 @@ def get_backend(backend):
         backend = BackendPytorch()
     elif backend == "pytorch-native":
         from backend_pytorch_native import BackendPytorchNative
-        backend = BackendPytorchNative()      
+        backend = BackendPytorchNative()
     elif backend == "tflite":
         from backend_tflite import BackendTflite
         backend = BackendTflite()
@@ -317,10 +318,8 @@ class RunnerBase:
         self.take_accuracy = False
         self.max_batchsize = max_batchsize
         self.result_timing = []
+        # [DVDT] Print current batch.
         self.batch_count = 0
-#        self.feeds = []
-#        self.ids = []
-#        self.results = []
 
     def handle_tasks(self, tasks_queue):
         pass
@@ -335,16 +334,11 @@ class RunnerBase:
         # run the prediction
         processed_results = []
         try:
-            feed = {self.model.inputs[0]: qitem.img}
- #           self.feeds.append(feed)
- #           self.ids.append(qitem.content_id)
-            results = self.model.predict(feed)
-            #results = self.model.predict({self.model.inputs[0]: qitem.img})
-            print("flag batch done", self.batch_count)
-            self.batch_count += 1
+            results = self.model.predict({self.model.inputs[0]: qitem.img})
+            print ("[DVDT] batch %d done" % self.batch_count)
             processed_results = self.post_process(results, qitem.content_id, qitem.label, self.result_dict)
-            print("flag batch postprocessed")
-#            self.results.append(results)
+            print ("[DVDT] batch %d postprocessed" % self.batch_count)
+            self.batch_count += 1
             if self.take_accuracy:
                 self.post_process.add_results(processed_results)
                 self.result_timing.append(time.time() - qitem.start)
@@ -358,7 +352,7 @@ class RunnerBase:
             response = []
             for idx, query_id in enumerate(qitem.query_id):
                 response_array = array.array("B", np.array(processed_results[idx], np.float32).tobytes())
-                response_array_refs.append(response_array)## what is this for????????
+                response_array_refs.append(response_array)
                 bi = response_array.buffer_info()
                 response.append(lg.QuerySampleResponse(query_id, bi[0], bi[1]))
             lg.QuerySamplesComplete(response)
@@ -459,80 +453,89 @@ def add_results(final_results, name, result_dict, result_list, took, show_accura
         len(result_list), buckets_str))
 
 
+# This function is adapted from v0.5/classification_and_detection/python/main.py
+# Original code is commented out when not applicable. New code is marked where possible.
 def mlperf_process(params):
-    print ("inside mlperf process!")
+    print ("[DVDT] Inside MLPerf process.")
     from pprint import pprint
     pprint (params)
-    global last_timeing
-    config = get_args(params)
 
+    global last_timeing
+
+    config = get_args(params)
     log.info(config)
-    print (config)
+
     # find backend
+#   backend = get_backend(args.backend)
     backend = get_backend(config['backend'])
-    print(backend.name())
+
     if backend.name() == 'tensorflowRT':
-        print ("##########################################################")
+        print ("[DVDT] Setting extra parametrs for TensorRT backend.")
         backend.set_extra_params(params)
+
     # override image format if given
-    #image_format = config['data_format'] if config['data_format'] else backend.image_format()
+#   image_format = config['data_format'] if config['data_format'] else backend.image_format()
     image_format = backend.image_format()
 
     # --count applies to accuracy mode only and can be used to limit the number of images
     # for testing. For perf model we always limit count to 200.
-    count = params["BATCH_COUNT"]*params["BATCH_SIZE"] 
+    # [DVDT FIXME] The original comment is wrong about the limit of 200?
+    # [DVDT NB] We always override count.
+#   count_override = False
+#   count = args.count
+    count = params["BATCH_COUNT"]*params["BATCH_SIZE"]
     if not count:
-#        if not args.accuracy:
         count = 1
-    print ("##########################################################")
-    print (count)
+#   if count:
+#       count_override = True
+
     # dataset to use
-    if config['dataset'] != 'coco-yolo':
-        wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
-        #wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
-        kwargs = {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}
-        ds = wanted_dataset(data_path=os.path.dirname(params["IMAGES_DIR"]),
-                        image_list=None,
-                        name=params["DATASET_TYPE"],
-                        image_format=image_format,
-                        pre_process=pre_proc,
-                        use_cache=params["CACHE"],    #now is set to 0, is a commandline arg which i dont know whats it is.
-                        count=count, **kwargs)
-    # load model to backend
-    else: 
-        wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
-        #wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
-        kwargs = {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}
-        ds = wanted_dataset(data_path=os.path.dirname(params["IMAGES_DIR"]),
-                        image_list=None,
-                        name=params["DATASET_TYPE"],
-                        image_format=image_format,
-                        pre_process=pre_proc,
-                        use_cache=params["CACHE"],    #now is set to 0, is a commandline arg which i dont know whats it is.
-                        count=count, **kwargs)
+    wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[config['dataset']]
+    kwargs = {"image_size": [params["RESIZE_HEIGHT_SIZE"],params["RESIZE_WIDTH_SIZE"], 3]}
+    ds = wanted_dataset(data_path=os.path.dirname(params["IMAGES_DIR"]),
+                    image_list=None,
+                    name=params["DATASET_TYPE"],
+                    image_format=image_format,
+                    pre_process=pre_proc,
+                    use_cache=params["CACHE"], # args.cache,
+                    count=count, **kwargs)
+    # [DVDT] Customize YOLO postprocessing.
+    if config['dataset'] == 'coco-yolo':
         post_proc = coco.PostProcessCocoYolo(ds)
 
-
+    # load model to backend
     model = backend.load(params["FROZEN_GRAPH"], inputs=config['inputs'], outputs=config['outputs'])
     final_results = {
         "runtime": model.name(),
         "version": model.version(),
         "time": int(time.time()),
-        "cmdline": str("placeholder"),
+        "cmdline": str("placeholder"), # str(args),
     }
+
+#   config = os.path.abspath(args.config)
+#   if not os.path.exists(config):
+#       log.error("{} not found".format(config))
+#       sys.exit(1)
+#
+#   if args.output:
+#       output_dir = os.path.abspath(args.output)
+#       os.makedirs(output_dir, exist_ok=True)
+#       os.chdir(output_dir)
 
     #
     # make one pass over the dataset to validate accuracy
     #
     count = ds.get_item_count()
-    
+
     # warmup
     ds.load_query_samples([0])
     for _ in range(5):
         img, _ = ds.get_samples([0])
         _ = backend.predict({backend.inputs[0]: img})
     ds.unload_query_samples(None)
-    debug_feeds = []
+
+#   scenario = SCENARIO_MAP[args.scenario]
+    # [DVDT NB] New indent from here.
     for scenario in params["SCENARIO"]:
         runner_map = {
             lg.TestScenario.SingleStream: RunnerBase,
@@ -540,7 +543,7 @@ def mlperf_process(params):
             lg.TestScenario.Server: QueueRunner,
             lg.TestScenario.Offline: QueueRunner
         }
-        print(scenario)
+#       runner = runner_map[scenario](model, ds, args.threads, post_proc=post_proc, max_batchsize=args.max_batchsize)
         runner = runner_map[scenario](model, ds, params["NUM_THREADS"], post_proc=post_proc, max_batchsize=params["BATCH_SIZE"])
 
         def issue_queries(query_samples):
@@ -554,22 +557,27 @@ def mlperf_process(params):
             last_timeing = [t / NANO_SEC for t in latencies_ns]
 
         settings = lg.TestSettings()
+#       settings.FromConfig(config, args.model_name, args.scenario)
         settings.scenario = scenario
         settings.mode = lg.TestMode.PerformanceOnly
-
+#       if args.accuracy:
         if params["ACCURACY"]:
             settings.mode = lg.TestMode.AccuracyOnly
+#       if args.find_peak_performance:
+#           settings.mode = lg.TestMode.FindPeakPerformance
 
-#        if args.time:
-            # override the time we want to run
+#       if args.time:
+#            # override the time we want to run
         settings.min_duration_ms = params["TIME"] * MILLI_SEC
         settings.max_duration_ms = params["TIME"] * MILLI_SEC
 
-        #if args.qps:
+#       if args.qps:
         qps = float(params["QPS"])
         settings.server_target_qps = qps
         settings.offline_expected_qps = qps
 
+#       if count_override:
+        # [DVDT]
         if scenario == lg.TestScenario.SingleStream:
             settings.min_query_count = params["QUERIES_SINGLE"]
             settings.max_query_count = params["QUERIES_SINGLE"]
@@ -583,62 +591,41 @@ def mlperf_process(params):
             settings.min_query_count = params["QUERIES_OFFLINE"]
             settings.max_query_count = params["QUERIES_OFFLINE"]
 
+#       if args.samples_per_query:
+#           settings.multi_stream_samples_per_query = args.samples_per_query
+#       if args.max_latency:
+#           settings.server_target_latency_ns = int(args.max_latency * NANO_SEC)
+#           settings.multi_stream_target_latency_ns = int(args.max_latency * NANO_SEC)
+
         sut = lg.ConstructSUT(issue_queries, flush_queries, process_latencies)
-        qsl = lg.ConstructQSL(count, min(count, 1000), ds.load_query_samples, ds.unload_query_samples)
+        qsl = lg.ConstructQSL(count, min(count, 500), ds.load_query_samples, ds.unload_query_samples)
 
-        if scenario == lg.TestScenario.Server:
-            for target_latency in max_latency:
-                log.info("starting {}, latency={}".format(scenario, target_latency))
-                settings.server_target_latency_ns = int(target_latency * NANO_SEC)
+        log.info("starting {}".format(scenario))
+        result_dict = {"good": 0, "total": 0, "scenario": str(scenario)}
+#       runner.start_run(result_dict, args.accuracy)
+        runner.start_run(result_dict, params["ACCURACY"])
+        lg.StartTest(sut, qsl, settings)
 
-                result_dict = {"good": 0, "total": 0, "scenario": str(scenario)}
-                runner.start_run(result_dict, params["ACCURACY"])
-                lg.StartTest(sut, qsl, settings)
-
-                if not last_timeing:
-                    last_timeing = runner.result_timing
-                if params["ACCURACY"]:
-                    post_proc.finalize(result_dict, ds, output_dir=params["CUR_DIR"])
-                add_results(final_results, "{}-{}".format(scenario, target_latency),
-                            result_dict, last_timeing, time.time() - ds.last_loaded, params["ACCURACY"])
-        else:
-            log.info("starting {}".format(scenario))
-            result_dict = {"good": 0, "total": 0, "scenario": str(scenario)}
-            runner.start_run(result_dict, params["ACCURACY"])
-            lg.StartTest(sut, qsl, settings)
-
-            if not last_timeing:
-                last_timeing = runner.result_timing
-            if params["ACCURACY"]:
-                post_proc.finalize(result_dict, ds, output_dir=params["CUR_DIR"])
-            add_results(final_results, "{}".format(scenario),
-                        result_dict, last_timeing, time.time() - ds.last_loaded, params["ACCURACY"])
+        if not last_timeing:
+            last_timeing = runner.result_timing
+#       if args.accuracy:
+#           post_proc.finalize(result_dict, ds, output_dir=args.output)
+        if params["ACCURACY"]:
+            post_proc.finalize(result_dict, ds, output_dir=params["CUR_DIR"])
+        add_results(final_results, "{}".format(scenario),
+                    result_dict, last_timeing, time.time() - ds.last_loaded, params["ACCURACY"])
 
         runner.finish()
-#        print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
-#        debug_feeds = runner.feeds
-#        debug_ids = []
-#        debug_sizes = []
-#        debug_results = runner.results 
-#        for bid in runner.ids:
-#            tmp_id = []
-#            tmp_img = []
-#            for iid in bid:
-#                tmp_id.append(ds.image_ids[iid])
-#                tmp_img.append(ds.image_sizes[iid])
-#            debug_ids.append(tmp_id)
-#            debug_sizes.append(tmp_img)
-
         lg.DestroyQSL(qsl)
         lg.DestroySUT(sut)
+        # [DVDT NB] End of for each scenario.
 
     #
     # write final results
     #
-#    if args.output:
-    with open('output.json', "w") as f:
+#   if args.output:
+    with open("results.json", "w") as f:
         json.dump(final_results, f, sort_keys=True, indent=4)
-#    return debug_feeds,debug_ids,debug_sizes,debug_results
 
 
 if __name__ == "__main__":
