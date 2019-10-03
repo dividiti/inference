@@ -511,7 +511,9 @@ def main():
     log.info("starting {}".format(scenario))
     result_dict = {"good": 0, "total": 0, "scenario": str(scenario)}
     runner.start_run(result_dict, args.accuracy)
-    lg.StartTest(sut, qsl, settings)
+    log_settings = lg.LogSettings()
+    log_settings.enable_trace = False
+    lg.StartTestWithLogSettings(sut, qsl, settings, log_settings)
 
     if not last_timeing:
         last_timeing = runner.result_timing
