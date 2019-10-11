@@ -9,6 +9,7 @@ import logging
 import os
 import time
 
+import sys
 import cv2
 import numpy as np
 from pycocotools.cocoeval import COCOeval
@@ -35,10 +36,10 @@ class Coco(dataset.Dataset):
         self.use_label_map=use_label_map
         if not cache_dir:
             cache_dir = os.getcwd()
-        self.cache_dir = os.path.join(cache_dir, "preprocessed", name, image_format)
+        self.cache_dir = os.path.join(cache_dir, "preprocessed", name, image_format,'{}_{}'.format(image_size[0],image_size[1]))
         # input images are in HWC
         self.need_transpose = True if image_format == "NCHW" else False
-        not_found = 0 
+        not_found = 0
         empty_80catageories = 0
         if image_list is None:
             # by default look for val_map.txt
@@ -78,14 +79,14 @@ class Coco(dataset.Dataset):
                 # if the image does not exists ignore it
                 not_found += 1
                 continue
-            if len(img["category"])==0 and self.use_label_map: 
-                #if an image doesn't have any of the 81 categories in it    
+            if len(img["category"])==0 and self.use_label_map:
+                #if an image doesn't have any of the 81 categories in it
                 empty_80catageories += 1 #should be 48 images - thus the validation sert has 4952 images
-                continue 
+                continue
 
             os.makedirs(os.path.dirname(os.path.join(self.cache_dir, image_name)), exist_ok=True)
             dst = os.path.join(self.cache_dir, image_name)
-            if not os.path.exists(dst + ".npy"):
+            if self.use_cache == 0 or not os.path.exists(dst + ".npy"):##added the cache, that was not in the original mlperf
                 # cache a preprocessed version of the image
                 img_org = cv2.imread(src)
                 processed = self.pre_process(img_org, need_transpose=self.need_transpose, dims=self.image_size)
@@ -124,7 +125,6 @@ class Coco(dataset.Dataset):
         src = os.path.join(self.data_path, self.image_list[nr])
         return src
 
-
 class PostProcessCoco:
     """
     Post processing for tensorflow ssd-mobilenet style models
@@ -152,7 +152,7 @@ class PostProcessCoco:
             detection_num = int(results[0][idx])
             detection_boxes = results[1][idx]
             detection_classes = results[3][idx]
-            expected_classes = expected[idx][0]
+            expected_classes = expected[idx][0]   ### useless for object det
             for detection in range(0, detection_num):
                 detection_class = int(detection_classes[detection])
                 if detection_class in expected_classes:
@@ -194,6 +194,8 @@ class PostProcessCoco:
                 if image_idx != self.content_ids[batch]:
                     # working with the coco index/id is error prone - extra check to make sure it is consistent
                     log.error("image_idx missmatch, lg={} / result={}".format(image_idx, self.content_ids[batch]))
+               # This is how I used to do, I'll leave it because want to check if the mlperf way is working or not, and in that case I can backtrack easily
+               # image_indices.append(image_idx)
                 # map the index to the coco image id
                 detection[0] = ds.image_ids[image_idx]
                 height, width = ds.image_sizes[image_idx]
@@ -215,8 +217,237 @@ class PostProcessCoco:
                     detection[6] =  cat_id
                 detections.append(np.array(detection))
 
+# Old debug code of mlperf, removed in last version
+#        if output_dir:
+#            # for debugging
+#            pp = []
+#            for image_idx, detection in zip(image_indices, detections):
+#                pp.append({"image_id": int(detection[0]),
+#                           "image_loc": ds.get_item_loc(image_idx),
+#                           "category_id": int(detection[6]),
+#                           "bbox": [float(detection[1]), float(detection[2]),
+#                                    float(detection[3]), float(detection[4])],
+#                           "score": float(detection[5])})
+#            if not output_dir:
+#                output_dir = "/tmp"
+#            fname = "{}/{}.json".format(output_dir, result_dict["scenario"])
+#            with open(fname, "w") as fp:
+#                json.dump(pp, fp, sort_keys=True, indent=4)
+#
+
         # map indices to coco image id's
         image_ids = [ds.image_ids[i]  for i in image_indices]
+        # This is how I used to do, I'll leave it because want to check if the mlperf way is working or not, and in that case I can backtrack easily
+        #image_ids = list(set([i[0] for i in detections]))
+        print (image_ids)
+        self.results = []
+        cocoGt = pycoco.COCO(ds.annotation_file)
+        cocoDt = cocoGt.loadRes(np.array(detections))
+        cocoEval = COCOeval(cocoGt, cocoDt, iouType='bbox')
+        cocoEval.params.imgIds = image_ids
+        cocoEval.evaluate()
+        cocoEval.accumulate()
+        cocoEval.summarize()
+        result_dict["mAP"] = cocoEval.stats[0]
+
+
+class PostProcessCocoYolo:
+    """
+    Post processing for tensorflow ssd-mobilenet style models
+    """
+    def __init__(self,dataset):
+        self.results = []
+        self.good = 0
+        self.total = 0
+        self.use_inv_map = False
+        self.ds = dataset
+        self.array_of_ids = [1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90]
+
+    def add_results(self, results):
+        self.results.extend(results)
+
+    def bboxes_iou(self, boxes1, boxes2):
+        boxes1 = np.array(boxes1)
+        boxes2 = np.array(boxes2)
+
+        boxes1_area = (boxes1[..., 2] - boxes1[..., 0]) * (boxes1[..., 3] - boxes1[..., 1])
+        boxes2_area = (boxes2[..., 2] - boxes2[..., 0]) * (boxes2[..., 3] - boxes2[..., 1])
+
+        left_up       = np.maximum(boxes1[..., :2], boxes2[..., :2])
+        right_down    = np.minimum(boxes1[..., 2:], boxes2[..., 2:])
+
+        inter_section = np.maximum(right_down - left_up, 0.0)
+        inter_area    = inter_section[..., 0] * inter_section[..., 1]
+        union_area    = boxes1_area + boxes2_area - inter_area
+        ious          = np.maximum(1.0 * inter_area / union_area, np.finfo(np.float32).eps)
+
+        return ious
+
+
+
+    def nms(self, bboxes, iou_threshold, sigma=0.3, method='nms'):
+        """
+        :param bboxes: (xmin, ymin, xmax, ymax, score, class)
+
+        Note: soft-nms, https://arxiv.org/pdf/1704.04503.pdf
+              https://github.com/bharatsingh430/soft-nms
+        """
+        classes_in_img = list(set(bboxes[:, 5]))
+        best_bboxes = []
+
+        for cls in classes_in_img:
+            cls_mask = (bboxes[:, 5] == cls)
+            cls_bboxes = bboxes[cls_mask]
+
+            while len(cls_bboxes) > 0:
+                max_ind = np.argmax(cls_bboxes[:, 4])
+                best_bbox = cls_bboxes[max_ind]
+                best_bboxes.append(best_bbox)
+                cls_bboxes = np.concatenate([cls_bboxes[: max_ind], cls_bboxes[max_ind + 1:]])
+                iou = self.bboxes_iou(best_bbox[np.newaxis, :4], cls_bboxes[:, :4])
+                weight = np.ones((len(iou),), dtype=np.float32)
+
+                assert method in ['nms', 'soft-nms']
+
+                if method == 'nms':
+                    iou_mask = iou > iou_threshold
+                    weight[iou_mask] = 0.0
+
+                if method == 'soft-nms':
+                    weight = np.exp(-(1.0 * iou ** 2 / sigma))
+
+                cls_bboxes[:, 4] = cls_bboxes[:, 4] * weight
+                score_mask = cls_bboxes[:, 4] > 0.
+                cls_bboxes = cls_bboxes[score_mask]
+
+        return best_bboxes
+    def __call__(self, results, ids, expected=None, result_dict=None, ):
+        # results come as:
+        # tensorflow :pred_sbbox/concat_2:0,pred_mbbox/concat_2:0,pred_lbbox/concat_2:0
+        # batch size
+        bs = len(results[0])
+        postprocessed_results= []
+        score_threshold = 0.3
+        valid_scale=[0, np.inf]
+
+        #TODO search if there is somewhere the number of different classes in coco in the dataset.
+        num_classes = 80# len(category_index.keys())
+        for idx in range(0, bs):
+            postprocessed_results.append([])
+
+            pred_bbox = np.concatenate([np.reshape(results[0][idx], (-1, 5 + num_classes)),
+                                    np.reshape(results[1][idx], (-1, 5 + num_classes)),
+                                    np.reshape(results[2][idx], (-1, 5 + num_classes))], axis=0)
+
+
+            pred_bbox = np.array(pred_bbox)
+
+            pred_xywh = pred_bbox[:, 0:4]
+            pred_conf = pred_bbox[:, 4]
+            pred_prob = pred_bbox[:, 5:]
+            # # (1) (x, y, w, h) --> (xmin, ymin, xmax, ymax)
+            pred_coor = np.concatenate([pred_xywh[:, :2] - pred_xywh[:, 2:] * 0.5,
+                                        pred_xywh[:, :2] + pred_xywh[:, 2:] * 0.5], axis=-1)
+            # # (2) (xmin, ymin, xmax, ymax) -> (xmin_org, ymin_org, xmax_org, ymax_org)
+            org_h, org_w = self.ds.image_sizes[ids[idx]]
+            resize_dim = 416,416   ##They are equal.
+            resize_ratio = min(resize_dim[0] / org_w, resize_dim[1] / org_h)
+
+            dw = (resize_dim[0] - resize_ratio * org_w) / 2
+            dh = (resize_dim[0] - resize_ratio * org_h) / 2
+
+            pred_coor[:, 0::2] = 1.0 * (pred_coor[:, 0::2] - dw) / resize_ratio
+            pred_coor[:, 1::2] = 1.0 * (pred_coor[:, 1::2] - dh) / resize_ratio
+
+            # # (3) clip some boxes those are out of range
+            pred_coor = np.concatenate([np.maximum(pred_coor[:, :2], [0, 0]),
+                                        np.minimum(pred_coor[:, 2:], [org_w - 1, org_h - 1])], axis=-1)
+            invalid_mask = np.logical_or((pred_coor[:, 0] > pred_coor[:, 2]), (pred_coor[:, 1] > pred_coor[:, 3]))
+            pred_coor[invalid_mask] = 0
+
+            # # (4) discard some invalid boxes
+            bboxes_scale = np.sqrt(np.multiply.reduce(pred_coor[:, 2:4] - pred_coor[:, 0:2], axis=-1))
+            scale_mask = np.logical_and((valid_scale[0] < bboxes_scale), (bboxes_scale < valid_scale[1]))
+
+            # # (5) discard some boxes with low scores
+            classes = np.argmax(pred_prob, axis=-1)
+            scores = pred_conf * pred_prob[np.arange(len(pred_coor)), classes]
+            score_mask = scores > score_threshold
+            mask = np.logical_and(scale_mask, score_mask)
+            correct_labels = lambda x : self.array_of_ids[x]
+            classes = np.array([correct_labels(x) for x in classes])
+
+            coors, scores, classes = pred_coor[mask], scores[mask], classes[mask]
+
+            bboxes= np.concatenate([coors, scores[:, np.newaxis], classes[:, np.newaxis]], axis=-1)
+            bboxes= self.nms (bboxes, 0.45, method='nms')
+            img_num = float(ids[idx])  #self.ds.image_ids[ids[idx]]
+            for bbox in bboxes:
+                        detection = [img_num, bbox[0],bbox[1],bbox[2],bbox[3],bbox[4],bbox[5]]
+                        postprocessed_results[idx].append(np.array(detection))
+
+
+        return postprocessed_results
+
+    def start(self):
+        self.results = []
+        self.good = 0
+        self.total = 0
+
+    def finalize(self, result_dict, ds=None, output_dir=None):
+        result_dict["good"] += self.good
+        result_dict["total"] += self.total
+        image_ids = []
+        detections = []
+        image_indices = []
+        for batch in range(0, len(self.results)):
+            image_indices.append(self.content_ids[batch])
+            for idx in range(0, len(self.results[batch])):
+                detection = self.results[batch][idx]
+                image_idx = int(detection[0])
+                if image_idx != self.content_ids[batch]:
+                    # working with the coco index/id is error prone - extra check to make sure it is consistent
+                    log.error("image_idx missmatch, lg={} / result={}".format(image_idx, self.content_ids[batch]))
+                # This is how I used to do, I'll leave it because want to check if the mlperf way is working or not, and in that case I can backtrack easily
+                # image_indices.append(image_idx)
+                # map the index to the coco image id
+                detection[0] = ds.image_ids[image_idx]
+                # box comes from model as: ymin, xmin, ymax, xmax
+                xmin = detection[1]# * org_h
+                ymin = detection[2]# * org_w
+                xmax = detection[3]# * org_h
+                ymax = detection[4]# * org_w
+                # pycoco wants {imageID,x1,y1,w,h,score,class}
+                detection[1] = xmin
+                detection[2] = ymin
+                detection[3] = xmax - xmin
+                detection[4] = ymax - ymin
+                print(detection)
+                detections.append(np.array(detection))
+#  Old debug code of mlperf, removed in last version
+#        # for debugging
+#        if output_dir:
+#            # for debugging
+#            pp = []
+#            for image_idx, detection in zip(image_indices, detections):
+#                print (image_idx,file=sys.stderr)
+#                pp.append({"image_id": int(detection[0]),
+#                           "image_loc": ds.get_item_loc(image_idx),
+#                           "category_id": int(detection[6]),
+#                           "bbox": [float(detection[1]), float(detection[2]),
+#                                    float(detection[3]), float(detection[4])],
+#                           "score": float(detection[5])})
+#            fname = "{}.json".format(result_dict["scenario"])
+#            with open(fname, "w") as fp:
+#                json.dump(pp, fp, sort_keys=True, indent=4)
+#
+
+
+
+        # map indices to coco image id's
+        image_ids = [ds.image_ids[i]  for i in image_indices]
+        # This is how I used to do, I'll leave it because want to check if the mlperf way is working or not, and in that case I can backtrack easily
+        #image_ids = list(set([i[0] for i in detections]))
         self.results = []
         cocoGt = pycoco.COCO(ds.annotation_file)
         cocoDt = cocoGt.loadRes(np.array(detections))
@@ -236,7 +467,7 @@ class PostProcessCocoPt(PostProcessCoco):
         super().__init__()
         self.use_inv_map = use_inv_map
         self.score_threshold = score_threshold
-        
+
     def __call__(self, results, ids, expected=None, result_dict=None):
         # results come as:
         #   detection_boxes,detection_classes,detection_scores
