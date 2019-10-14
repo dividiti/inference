@@ -260,6 +260,7 @@ class PostProcessCocoYolo:
         self.good = 0
         self.total = 0
         self.use_inv_map = False
+        self.content_ids = []
         self.ds = dataset
         self.array_of_ids = [1,2,3,4,5,6,7,8,9,10,11,13,14,15,16,17,18,19,20,21,22,23,24,25,27,28,31,32,33,34,35,36,37,38,39,40,41,42,43,44,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,67,70,72,73,74,75,76,77,78,79,80,81,82,84,85,86,87,88,89,90]
 
@@ -333,6 +334,7 @@ class PostProcessCocoYolo:
         #TODO search if there is somewhere the number of different classes in coco in the dataset.
         num_classes = 80# len(category_index.keys())
         for idx in range(0, bs):
+            self.content_ids.append(ids[idx])
             postprocessed_results.append([])
 
             pred_bbox = np.concatenate([np.reshape(results[0][idx], (-1, 5 + num_classes)),
