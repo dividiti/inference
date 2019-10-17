@@ -55,9 +55,9 @@ class BackendTensorflowRT(backend.Backend):
         trt_graph = trt.create_inference_graph(
               input_graph_def=graph_def,
               outputs=outputs, 
-              max_batch_size=self.params["BATCH_SIZE"],
+              max_batch_size=int(self.params["BATCH_SIZE"]),
               max_workspace_size_bytes=4000000000,
-              is_dynamic_op=True if self.params["TENSORRT_DYNAMIC"]==1 else False,
+              is_dynamic_op=( int(self.params["TENSORRT_DYNAMIC"])==1 )
               precision_mode=self.params["TENSORRT_PRECISION"]
               )
         tf.import_graph_def(
