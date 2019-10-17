@@ -42,7 +42,7 @@ SUPPORTED_DATASETS = {
          {"image_size": [224, 224, 3]}),
     "coco-standard":
         (coco.Coco, dataset.pre_process_coco_mobilenet, coco.PostProcessCoco(),
-     {}),
+         {}),
     "coco-300":
         (coco.Coco, dataset.pre_process_coco_mobilenet, coco.PostProcessCoco(),
          {"image_size": [300, 300, 3]}),
@@ -206,6 +206,8 @@ def get_args():
     parser.add_argument("--dataset", choices=SUPPORTED_DATASETS.keys(), help="dataset")
     parser.add_argument("--dataset-path", required=True, help="path to the dataset")
     parser.add_argument("--dataset-list", help="path to the dataset list")
+    parser.add_argument("--dataset-height", type=int, help="override the default dataset height")
+    parser.add_argument("--dataset-width", type=int, help="override the default dataset width")
     parser.add_argument("--data-format", choices=["NCHW", "NHWC"], help="data format")
     parser.add_argument("--profile", choices=SUPPORTED_PROFILES.keys(), help="standard profiles")
     parser.add_argument("--scenario", default="SingleStream",
@@ -216,7 +218,7 @@ def get_args():
     parser.add_argument("--inputs", help="model inputs")
     parser.add_argument("--outputs", help="model outputs")
     parser.add_argument("--backend", help="runtime to use")
-    parser.add_argument("--backend_params", help="a colon-delimited and comma-separated dictionary of backend-specific parameters")
+    parser.add_argument("--backend-params", help="a colon-delimited and comma-separated dictionary of backend-specific parameters")
     parser.add_argument("--model-name", help="name of the mlperf model, ie. resnet50")
     parser.add_argument("--threads", default=os.cpu_count(), type=int, help="threads")
     parser.add_argument("--qps", type=int, help="target qps")
@@ -464,6 +466,10 @@ def main():
 
     # dataset to use
     wanted_dataset, pre_proc, post_proc, kwargs = SUPPORTED_DATASETS[args.dataset]
+
+    if len(kwargs)==0 and args.dataset_height and args.dataset_width:
+        kwargs = {"image_size": [args.dataset_height, args.dataset_width, 3]}
+
     ds = wanted_dataset(data_path=args.dataset_path,
                         image_list=args.dataset_list,
                         name=args.dataset,
