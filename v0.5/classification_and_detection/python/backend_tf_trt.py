@@ -57,7 +57,7 @@ class BackendTensorflowRT(backend.Backend):
               outputs=outputs, 
               max_batch_size=int(self.params["BATCH_SIZE"]),
               max_workspace_size_bytes=4000000000,
-              is_dynamic_op=( int(self.params["TENSORRT_DYNAMIC"])==1 )
+              is_dynamic_op=( int(self.params["TENSORRT_DYNAMIC"])==1 ),
               precision_mode=self.params["TENSORRT_PRECISION"]
               )
         tf.import_graph_def(
