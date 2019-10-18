@@ -385,7 +385,7 @@ class PostProcessCocoYolo:
             bboxes= self.nms (bboxes, 0.45, method='nms')
             img_num = float(ids[idx])  #self.ds.image_ids[ids[idx]]
             for bbox in bboxes:
-                        detection = [img_num, bbox[0],bbox[1],bbox[2],bbox[3],bbox[4],bbox[5]]
+                        detection = [img_num, bbox[1]/org_h,bbox[0]/org_w,bbox[3]/org_h,bbox[2]/org_w,bbox[4],bbox[5]]
                         postprocessed_results[idx].append(np.array(detection))
 
 
@@ -412,19 +412,21 @@ class PostProcessCocoYolo:
                     log.error("image_idx missmatch, lg={} / result={}".format(image_idx, self.content_ids[batch]))
                 # This is how I used to do, I'll leave it because want to check if the mlperf way is working or not, and in that case I can backtrack easily
                 # image_indices.append(image_idx)
+
+                org_h, org_w = self.ds.image_sizes[image_idx]
+
                 # map the index to the coco image id
                 detection[0] = ds.image_ids[image_idx]
                 # box comes from model as: ymin, xmin, ymax, xmax
-                xmin = detection[1]# * org_h
-                ymin = detection[2]# * org_w
-                xmax = detection[3]# * org_h
-                ymax = detection[4]# * org_w
+                ymin = detection[1] * org_h
+                xmin = detection[2] * org_w
+                ymax = detection[3] * org_h
+                xmax = detection[4] * org_w
                 # pycoco wants {imageID,x1,y1,w,h,score,class}
                 detection[1] = xmin
                 detection[2] = ymin
                 detection[3] = xmax - xmin
                 detection[4] = ymax - ymin
-                print(detection)
                 detections.append(np.array(detection))
 #  Old debug code of mlperf, removed in last version
 #        # for debugging
