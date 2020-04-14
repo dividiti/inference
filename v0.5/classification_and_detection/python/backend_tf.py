@@ -38,7 +38,7 @@ class BackendTensorflow(backend.Backend):
         with open(model_path, "rb") as f:
             graph_def.ParseFromString(f.read())
         g = tf.import_graph_def(graph_def, name='')
-        self.sess = tf.Session(graph=g)
+        self.sess = tf.compat.v1.Session(graph=g)
         return self
 
     def predict(self, feed):
