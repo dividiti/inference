@@ -31,6 +31,7 @@ def get_args():
     parser.add_argument("--accuracy", action="store_true", help="enable accuracy pass")
     parser.add_argument("--quantized", action="store_true", help="use quantized model (only valid for onnxruntime backend)")
     parser.add_argument("--profile", action="store_true", help="enable profiling (only valid for onnxruntime backend)")
+    parser.add_argument("--cpu", action="store_true", help="execute on CPU (only valid for onnxruntime backend)")
     parser.add_argument("--mlperf_conf", default="build/mlperf.conf", help="mlperf rules config")
     parser.add_argument("--user_conf", default="user.conf", help="mlperf rules config")
     args = parser.parse_args()
@@ -49,11 +50,13 @@ def main():
     if args.backend == "pytorch":
         assert not args.quantized, "Quantized model is only supported by onnxruntime backend!"
         assert not args.profile, "Profiling is only supported by onnxruntime backend!"
+        assert not args.cpu, "CPU execution is only supported by onnxruntime backend!"
         from pytorch_SUT import get_pytorch_sut
         sut = get_pytorch_sut()
     elif args.backend == "tf":
         assert not args.quantized, "Quantized model is only supported by onnxruntime backend!"
         assert not args.profile, "Profiling is only supported by onnxruntime backend!"
+        assert not args.cpu, "CPU execution is only supported by onnxruntime backend!"
         from tf_SUT import get_tf_sut
         sut = get_tf_sut()
     elif args.backend == "onnxruntime":

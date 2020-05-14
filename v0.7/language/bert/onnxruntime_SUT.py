@@ -31,6 +31,7 @@ class BERT_ONNXRuntime_SUT():
         self.profile = args.profile
         self.options = onnxruntime.SessionOptions()
         self.options.enable_profiling = args.profile
+        self.options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
 
         print("Loading ONNX model...")
         self.quantized = args.quantized
@@ -39,6 +40,9 @@ class BERT_ONNXRuntime_SUT():
         else:
             model_path = "build/data/bert_tf_v1_1_large_fp32_384_v2/model.onnx"
         self.sess = onnxruntime.InferenceSession(model_path, self.options)
+        if args.cpu:
+            self.sess.set_providers(['CPUExecutionProvider'])
+            self.options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_BASIC
 
         print("Constructing SUT...")
         self.sut = lg.ConstructSUT(self.issue_queries, self.flush_queries, self.process_latencies)
