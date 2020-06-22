@@ -28,6 +28,8 @@ class RNNT(torch.nn.Module):
             rnnt["rnn_type"],
             rnnt["encoder_stack_time_factor"],
             rnnt["dropout"],
+            None if "dump_pre" not in rnnt else rnnt["dump_pre"],
+            None if "dump_post" not in rnnt else rnnt["dump_post"],
         )
 
         self.prediction = Prediction(
@@ -38,6 +40,7 @@ class RNNT(torch.nn.Module):
             None if "norm" not in rnnt else rnnt["norm"],
             rnnt["rnn_type"],
             rnnt["dropout"],
+            False if "dump_dec" not in rnnt else rnnt["dump_dec"],
         )
 
         self.joint = Joint(
@@ -52,11 +55,26 @@ class RNNT(torch.nn.Module):
         return self.encoder(x_padded, x_lens)
         
 
+class DumpRNN():
+    def __init__(self, fn, prefix):
+        super().__init__()
+        self.fn = fn
+        self.prefix = prefix
+        self.count = 0
+
+    def forward(self, in_padded: torch.Tensor, in_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        out_padded, out_lens = self.fn(in_padded, in_lens)
+        torch.save((in_padded, in_lens, out_padded, out_lens), self.prefix + str(self.count).zfill(6) + ".pt")
+        self.count += 1
+        return out_padded, out_lens
+
+    __call__ = forward
+
 class Encoder(torch.nn.Module):
     def __init__(self, in_features, encoder_n_hidden,
                  encoder_pre_rnn_layers, encoder_post_rnn_layers,
                  forget_gate_bias, norm, rnn_type, encoder_stack_time_factor,
-                 dropout):
+                 dropout, dump_pre, dump_post):
         super().__init__()
         self.pre_rnn = rnn(
             rnn=rnn_type,
@@ -78,19 +96,21 @@ class Encoder(torch.nn.Module):
             norm_first_rnn=True,
             dropout=dropout,
         )
+        self.call_pre_rnn = (self.pre_rnn if not dump_pre else DumpRNN( self.pre_rnn, dump_pre))
+        self.call_post_rnn = (self.post_rnn if not dump_post else DumpRNN( self.post_rnn, dump_post))
 
     def forward(self, x_padded: torch.Tensor, x_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_padded, _ = self.pre_rnn(x_padded, None)
+        x_padded, _ = self.call_pre_rnn(x_padded, None)
         x_padded, x_lens = self.stack_time(x_padded, x_lens)
         # (T, B, H)
-        x_padded, _ = self.post_rnn(x_padded, None)
+        x_padded, _ = self.call_post_rnn(x_padded, None)
         # (B, T, H)
         x_padded = x_padded.transpose(0, 1)
         return x_padded, x_lens
 
 class Prediction(torch.nn.Module):
     def __init__(self, vocab_size, n_hidden, pred_rnn_layers,
-                 forget_gate_bias, norm, rnn_type, dropout):
+                 forget_gate_bias, norm, rnn_type, dropout, dump_dec):
         super().__init__()
         self.embed = torch.nn.Embedding(vocab_size - 1, n_hidden)
         self.n_hidden = n_hidden
@@ -103,6 +123,7 @@ class Prediction(torch.nn.Module):
             forget_gate_bias=forget_gate_bias,
             dropout=dropout,
         )
+        self.call_dec_rnn = (self.dec_rnn if not dump_dec else DumpRNN( self.dec_rnn, dump_dec))
 
     def forward(self, y: Optional[torch.Tensor],
                 state: Optional[Tuple[torch.Tensor, torch.Tensor]] = None) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
@@ -142,7 +163,7 @@ class Prediction(torch.nn.Module):
         #    ]
 
         y = y.transpose(0, 1)  # .contiguous()   # (U + 1, B, H)
-        g, hid = self.dec_rnn(y, state)
+        g, hid = self.call_dec_rnn(y, state)
         g = g.transpose(0, 1)  # .contiguous()   # (B, U + 1, H)
         # del y, state
         return g, hid

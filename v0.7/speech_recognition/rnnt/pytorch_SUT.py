@@ -69,7 +69,7 @@ class PytorchSUT:
             num_classes=len(rnnt_vocab)
         )
         model.load_state_dict(load_and_migrate_checkpoint(checkpoint_path),
-                              strict=True)
+                              strict=False)
         model.eval()
         model.encoder = torch.jit.script(model.encoder)
         model.encoder = torch.jit._recursive.wrap_cpp_module(
