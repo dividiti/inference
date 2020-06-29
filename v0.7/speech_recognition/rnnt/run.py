@@ -20,7 +20,8 @@ import subprocess
 import os
 from pathlib import Path
 
-MLPERF_CONF = Path(os.path.dirname(os.path.realpath(__file__))) / "../../mlperf.conf"
+RNNT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
+MLPERF_CONF = RNNT_DIR / "../../mlperf.conf"
 MLPERF_CONF = MLPERF_CONF.resolve()
 
 
@@ -80,7 +81,7 @@ def main():
     lg.StartTestWithLogSettings(sut.sut, sut.qsl.qsl, settings, log_settings)
 
     if args.accuracy:
-        cmd = f"python3 accuracy_eval.py --log_dir {log_path} --dataset_dir {args.dataset_dir} --manifest {args.manifest}"
+        cmd = f"python3 {RNNT_DIR}/accuracy_eval.py --log_dir {log_path} --dataset_dir {args.dataset_dir} --manifest {args.manifest}"
         print(f"Running accuracy script: {cmd}")
         subprocess.check_call(cmd, shell=True)
 
