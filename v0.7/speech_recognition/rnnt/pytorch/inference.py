@@ -229,6 +229,8 @@ def main(args):
 #        model.eval()
 #        torch.save(migrated_state_dict,"test.pt")
 
+    model.hotswap_init()
+
     audio_preprocessor.featurizer.normalize = "per_feature"
 
     if args.cuda:
