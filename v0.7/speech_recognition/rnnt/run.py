@@ -25,7 +25,7 @@ MLPERF_CONF = RNNT_DIR / "../../mlperf.conf"
 MLPERF_CONF = MLPERF_CONF.resolve()
 USER_CONF = RNNT_DIR / "user.conf"
 USER_CONF = USER_CONF.resolve()
-
+PYTHON = os.getenv('CK_ENV_COMPILER_PYTHON_FILE', 'python3')
 
 
 def get_args():
@@ -84,7 +84,7 @@ def main():
     lg.StartTestWithLogSettings(sut.sut, sut.qsl.qsl, settings, log_settings)
 
     if args.accuracy:
-        cmd = f"python3 {RNNT_DIR}/accuracy_eval.py --log_dir {log_path} --dataset_dir {args.dataset_dir} --manifest {args.manifest}"
+        cmd = f"{PYTHON} {RNNT_DIR}/accuracy_eval.py --log_dir {log_path} --dataset_dir {args.dataset_dir} --manifest {args.manifest}"
         print(f"Running accuracy script: {cmd}")
         subprocess.check_call(cmd, shell=True)
 
