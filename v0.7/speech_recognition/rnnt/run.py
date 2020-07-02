@@ -23,6 +23,9 @@ from pathlib import Path
 RNNT_DIR = Path(os.path.dirname(os.path.realpath(__file__)))
 MLPERF_CONF = RNNT_DIR / "../../mlperf.conf"
 MLPERF_CONF = MLPERF_CONF.resolve()
+USER_CONF = RNNT_DIR / "user.conf"
+USER_CONF = USER_CONF.resolve()
+
 
 
 def get_args():
@@ -31,7 +34,7 @@ def get_args():
     parser.add_argument("--scenario", choices=["SingleStream", "Offline", "Server"], default="Offline", help="Scenario")
     parser.add_argument("--accuracy", action="store_true", help="enable accuracy pass")
     parser.add_argument("--mlperf_conf", default=str(MLPERF_CONF), help="mlperf rules config")
-    parser.add_argument("--user_conf", default="user.conf", help="mlperf rules config")
+    parser.add_argument("--user_conf", default=str(USER_CONF), help="mlperf rules config")
     parser.add_argument("--pytorch_config_toml", default="pytorch/configs/rnnt.toml")
     parser.add_argument("--pytorch_checkpoint", default="pytorch/work_dir/rnnt.pt")
     parser.add_argument("--dataset_dir", required=True)
