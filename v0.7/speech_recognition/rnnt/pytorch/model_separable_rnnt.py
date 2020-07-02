@@ -107,14 +107,14 @@ class Encoder(torch.nn.Module):
         self.naive_lstm_pre = None
         hotswap_pre = os.environ.get('CK_RNNT_HOTSWAP_PRE', 'None')
         if hotswap_pre == 'Naive':
-            print("Swapping in LSTM PRE to Naive implementation")
+            print("LSTM PRE: Swapping to Naive implementation")
             self.naive_lstm_pre  = NaiveStackedLSTM(input_size=in_features, hidden_size=encoder_n_hidden,
                                                num_layers=encoder_pre_rnn_layers, dropout=0.0)
 
         self.naive_lstm_post = None
         hotswap_post = os.environ.get('CK_RNNT_HOTSWAP_POST', 'None')
         if hotswap_post == 'Naive':
-            print("Swapping in LSTM POST to Naive implementation")
+            print("LSTM POST: Swapping to Naive implementation")
             self.naive_lstm_post = NaiveStackedLSTM(input_size=encoder_stack_time_factor * encoder_n_hidden, hidden_size=encoder_n_hidden,
                                                num_layers=encoder_post_rnn_layers, dropout=0.0)
 
@@ -156,7 +156,7 @@ class Prediction(torch.nn.Module):
         self.naive_lstm_dec = None
         hotswap_dec = os.environ.get('CK_RNNT_HOTSWAP_DEC', 'None')
         if hotswap_dec == 'Naive':
-            print("Swapping in LSTM DEC to Naive implementation")
+            print("LSTM DEC: Swapping to Naive implementation")
             self.naive_lstm_dec  = NaiveStackedLSTM(input_size=n_hidden, hidden_size=n_hidden,
                                                num_layers=pred_rnn_layers, dropout=0.0)
 
