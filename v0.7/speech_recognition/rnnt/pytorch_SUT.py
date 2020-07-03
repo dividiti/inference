@@ -72,6 +72,7 @@ class PytorchSUT:
                               strict=False)
         model.eval()
         model.hotswap_init()
+        ''' #remove jitting of script as interferes with plugins
         model.encoder = torch.jit.script(model.encoder)
         model.encoder = torch.jit._recursive.wrap_cpp_module(
             torch._C._freeze_module(model.encoder._c))
@@ -82,6 +83,7 @@ class PytorchSUT:
         model.joint = torch.jit._recursive.wrap_cpp_module(
             torch._C._freeze_module(model.joint._c))
         model = torch.jit.script(model)
+        '''
 
         self.greedy_decoder = ScriptGreedyDecoder(len(rnnt_vocab) - 1, model)
 
