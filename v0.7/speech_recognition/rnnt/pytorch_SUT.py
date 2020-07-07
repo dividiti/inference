@@ -112,7 +112,6 @@ class PytorchSUT:
                 _, _, transcript = self.greedy_decoder.forward(feature, feature_length)
                 batch_end = time.time()
 
-                print("running the transcript")
                 if self.instr:
                     sample = {}
                     sample['exe_time'] = batch_end - batch_start
