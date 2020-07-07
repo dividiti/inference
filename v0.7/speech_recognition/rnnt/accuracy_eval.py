@@ -30,14 +30,25 @@ def main():
         results = json.load(fh)
     hypotheses = []
     references = []
+    instrumentation = []
     for result in results:
         hypotheses.append(array.array('q', bytes.fromhex(result["data"])).tolist())
         references.append(manifest[result["qsl_idx"]]["transcript"])
+        blob = {}
+        blob['hypothesis'] = hypotheses[-1]
+        blob['reference'] = references[-1]
+        blob['result'] = result
+        instrumentation.append(blob)
     hypotheses = __gather_predictions([hypotheses], labels=labels)
     references = __gather_predictions([references], labels=labels)
     d = dict(predictions=hypotheses,
              transcripts=references)
-    print("Word Error Rate:", process_evaluation_epoch(d))
+
+    wer = process_evaluation_epoch(d)
+    print("Word Error Rate:", wer)
+
+    with open('accuracy_instr.json', 'w') as save_file:
+        json.dump({'wer': wer, 'samples': instrumentation}, save_file, indent=2, sort_keys=True)
 
 if __name__ == '__main__':
     main()

@@ -16,6 +16,8 @@ import sys
 import os
 sys.path.insert(0, os.path.join(os.getcwd(), "pytorch"))
 
+import time
+import json
 import array
 import torch
 import numpy as np
@@ -87,7 +89,10 @@ class PytorchSUT:
 
         self.greedy_decoder = ScriptGreedyDecoder(len(rnnt_vocab) - 1, model)
 
+        self.samples = []
+
     def issue_queries(self, query_samples):
+        query_count = 0
         for query_sample in query_samples:
             waveform = self.qsl[query_sample.index]
             assert waveform.ndim == 1
@@ -102,7 +107,16 @@ class PytorchSUT:
                 assert feature_length.ndim == 1
                 feature = feature.permute(2, 0, 1)
 
+                batch_start = time.time()
                 _, _, transcript = self.greedy_decoder.forward(feature, feature_length)
+                batch_end = time.time()
+                sample = {}
+                sample['exe_time'] = batch_end - batch_start
+                sample['qsl_idx'] = query_sample.index
+                sample['query_id'] = query_sample.id
+                sample['query_count'] = query_count
+
+                self.samples.append(sample)
 
             assert len(transcript) == 1
             response_array = array.array('q', transcript[0])
@@ -110,6 +124,8 @@ class PytorchSUT:
             response = lg.QuerySampleResponse(query_sample.id, bi[0],
                                               bi[1] * response_array.itemsize)
             lg.QuerySamplesComplete([response])
+
+            query_count += 1
 
     def flush_queries(self):
         pass
@@ -121,6 +137,10 @@ class PytorchSUT:
         print(np.percentile(latencies_ns, 50)/1000000.0)
         print("90 percentile latency (ms): ")
         print(np.percentile(latencies_ns, 90)/1000000.0)
+
+    def dump_instr(self):
+        with open("timing_instr.json", 'w') as instrfp:
+            json.dump(self.samples, instrfp, indent=2)
 
     def __del__(self):
         lg.DestroySUT(self.sut)

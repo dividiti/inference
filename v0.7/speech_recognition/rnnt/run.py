@@ -88,6 +88,8 @@ def main():
         print(f"Running accuracy script: {cmd}")
         subprocess.check_call(cmd, shell=True)
 
+    sut.dump_instr()
+
     print("Done!")
 
 

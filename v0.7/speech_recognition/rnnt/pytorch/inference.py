@@ -25,6 +25,7 @@ import random
 import numpy as np
 import pickle
 import time
+import json
 
 from copy import deepcopy
 
@@ -86,6 +87,8 @@ def eval(
             'logits': [],
         }
 
+        sampledata = []
+        run_start = time.time()
         for it, data in enumerate(tqdm(data_layer.data_iterator)):
             # if it == 0:
             #     torch.onnx.export()
@@ -93,7 +96,7 @@ def eval(
             # TODO: Make this part of this scripted model
             (t_audio_signal_e, t_a_sig_length_e,
              transcript_list, t_transcript_e,
-             t_transcript_len_e) = audio_processor(data)
+             t_transcript_len_e, t_samplelist_e) = audio_processor(data)
 
             # with open("predict.txt", "w") as fh:
             #     fh.write(str(greedy_decoder._model.prediction.forward.inlined_graph))
@@ -131,8 +134,17 @@ def eval(
 #            print(t_a_sig_length_e)
 #            padded = torch.empty(2048, 1, 240, dtype=torch.float)
 #            padded[0:t_a_sig_length_e,0:1,0:240] = t_audio_signal_e
+            batch_start = time.time()
             logits, logits_lens, t_predictions_e = greedy_decoder(t_audio_signal_e, t_a_sig_length_e)
+            batch_end = time.time()
+            t_samplelist_e[0]['exe_time'] = (batch_end - batch_start)
+            for i in range(len(t_samplelist_e)):
+                t_samplelist_e[i]['batch']=it
+                t_samplelist_e[i]['seq']=i
+                t_samplelist_e[i]['prediction']=t_predictions_e[i]
+                sampledata.append(t_samplelist_e[i])
 #            logits, logits_lens, t_predictions_e = greedy_decoder(padded, t_a_sig_length_e)
+
             if False:
                 from torch.onnx import OperatorExportTypes
 
@@ -157,7 +169,18 @@ def eval(
 
             if args.steps is not None and it + 1 >= args.steps:
                 break
+
+        run_end = time.time()
         wer = process_evaluation_epoch(_global_var_dict)
+        with open("rnnt_instr.json", 'w') as instrfp:
+            instrdata = {}
+            instrdata['wer']=wer
+            instrdata['total_time']=run_end - run_start
+            instrdata['samples']=sampledata
+            instrdata['labels']=labels
+            json.dump(instrdata, instrfp, indent=2)
+
+
         print("==========>>>>>>Evaluation WER: {0}\n".format(wer))
         if args.save_prediction is not None:
             with open(args.save_prediction, 'w') as fp:

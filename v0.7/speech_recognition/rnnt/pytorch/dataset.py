@@ -22,7 +22,6 @@ from torch.utils.data import Dataset
 from parts.manifest import Manifest
 from parts.features import WaveformFeaturizer
 
-
 def seq_collate_fn(batch):
     """batches samples and returns as tensors
     Args:
@@ -47,9 +46,11 @@ def seq_collate_fn(batch):
     packed_transcripts = torch.nn.utils.rnn.pack_sequence(transcript_list,
                                                           enforce_sorted=False)
 
+    sample_list = [batch[i].sample for i in permute_indices]
+
     # TODO: Don't I need to stop grad at some point now?
     return (padded_audio_signals, audio_lengths, transcript_list,
-            packed_transcripts, transcript_lengths)
+            packed_transcripts, transcript_lengths, sample_list)
 
 
 class AudioToTextDataLayer:
@@ -151,9 +152,11 @@ class AudioDataset(Dataset):
                                            trim=self.trim)
 
         AudioSample = namedtuple('AudioSample', ['waveform',
-                                                 'transcript'])
+                                                 'transcript',
+                                                 'sample'])
         return AudioSample(features,
-                           torch.LongTensor(sample["transcript"]))
+                           torch.LongTensor(sample["transcript"]),
+                           sample)
 
     def __len__(self):
         return len(self.manifest)
