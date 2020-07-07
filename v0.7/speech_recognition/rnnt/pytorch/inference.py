@@ -55,9 +55,12 @@ def parse_args():
     parser.add_argument("--logits_save_to", default=None,
                         type=str, help="if specified will save logits to path")
     parser.add_argument("--seed", default=42, type=int, help='seed')
+    parser.add_argument("--max_duration", default=3600.0, type=float, help='seed')
     parser.add_argument("--cuda",
                         action='store_true', help="use cuda", default=False)
     parser.add_argument("--runtime", choices=["onnxruntime", "pytorch", "torchscript"])
+    parser.add_argument("--instr",
+                        action='store_true', help="enable instrumentation", default=False)
     return parser.parse_args()
 
 
@@ -137,12 +140,14 @@ def eval(
             batch_start = time.time()
             logits, logits_lens, t_predictions_e = greedy_decoder(t_audio_signal_e, t_a_sig_length_e)
             batch_end = time.time()
-            t_samplelist_e[0]['exe_time'] = (batch_end - batch_start)
-            for i in range(len(t_samplelist_e)):
-                t_samplelist_e[i]['batch']=it
-                t_samplelist_e[i]['seq']=i
-                t_samplelist_e[i]['prediction']=t_predictions_e[i]
-                sampledata.append(t_samplelist_e[i])
+            if args.instr:
+                t_samplelist_e[0]['exe_time'] = (batch_end - batch_start)
+                for i in range(len(t_samplelist_e)):
+                    t_samplelist_e[i]['batch']=it
+                    t_samplelist_e[i]['seq']=i
+                    t_samplelist_e[i]['prediction']=t_predictions_e[i]
+                    sampledata.append(t_samplelist_e[i])
+
 #            logits, logits_lens, t_predictions_e = greedy_decoder(padded, t_a_sig_length_e)
 
             if False:
@@ -172,13 +177,14 @@ def eval(
 
         run_end = time.time()
         wer = process_evaluation_epoch(_global_var_dict)
-        with open("rnnt_instr.json", 'w') as instrfp:
-            instrdata = {}
-            instrdata['wer']=wer
-            instrdata['total_time']=run_end - run_start
-            instrdata['samples']=sampledata
-            instrdata['labels']=labels
-            json.dump(instrdata, instrfp, indent=2)
+        if args.instr:
+            with open("rnnt_instr.json", 'w') as instrfp:
+                instrdata = {}
+                instrdata['wer']=wer
+                instrdata['total_time']=run_end - run_start
+                instrdata['samples']=sampledata
+                instrdata['labels']=labels
+                json.dump(instrdata, instrfp, indent=2)
 
 
         print("==========>>>>>>Evaluation WER: {0}\n".format(wer))
@@ -206,6 +212,8 @@ def main(args):
 
     val_manifest = args.val_manifest
     featurizer_config = model_definition['input_eval']
+
+    featurizer_config['max_duration'] = args.max_duration
 
     if args.pad_to is not None:
         featurizer_config['pad_to'] = args.pad_to if args.pad_to >= 0 else "max"

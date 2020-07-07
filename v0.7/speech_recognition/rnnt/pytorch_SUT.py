@@ -45,7 +45,7 @@ def load_and_migrate_checkpoint(ckpt_path):
 
 class PytorchSUT:
     def __init__(self, config_toml, checkpoint_path, dataset_dir,
-                 manifest_filepath, perf_count):
+                 manifest_filepath, perf_count, enable_instr):
         config = toml.load(config_toml)
 
         dataset_vocab = config['labels']['labels']
@@ -89,6 +89,7 @@ class PytorchSUT:
 
         self.greedy_decoder = ScriptGreedyDecoder(len(rnnt_vocab) - 1, model)
 
+        self.instr = enable_instr
         self.samples = []
 
     def issue_queries(self, query_samples):
@@ -110,13 +111,16 @@ class PytorchSUT:
                 batch_start = time.time()
                 _, _, transcript = self.greedy_decoder.forward(feature, feature_length)
                 batch_end = time.time()
-                sample = {}
-                sample['exe_time'] = batch_end - batch_start
-                sample['qsl_idx'] = query_sample.index
-                sample['query_id'] = query_sample.id
-                sample['query_count'] = query_count
 
-                self.samples.append(sample)
+                print("running the transcript")
+                if self.instr:
+                    sample = {}
+                    sample['exe_time'] = batch_end - batch_start
+                    sample['qsl_idx'] = query_sample.index
+                    sample['query_id'] = query_sample.id
+                    sample['query_count'] = query_count
+
+                    self.samples.append(sample)
 
             assert len(transcript) == 1
             response_array = array.array('q', transcript[0])
@@ -139,8 +143,11 @@ class PytorchSUT:
         print(np.percentile(latencies_ns, 90)/1000000.0)
 
     def dump_instr(self):
-        with open("timing_instr.json", 'w') as instrfp:
-            json.dump(self.samples, instrfp, indent=2)
+        print("dumping stuff")
+        print(self.samples)
+        if self.instr:
+          with open("timing_instr.json", 'w') as instrfp:
+              json.dump(self.samples, instrfp, indent=2)
 
     def __del__(self):
         lg.DestroySUT(self.sut)

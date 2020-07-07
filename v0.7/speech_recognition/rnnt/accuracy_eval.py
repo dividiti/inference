@@ -18,6 +18,7 @@ def get_args():
     parser.add_argument("--log_dir", required=True)
     parser.add_argument("--dataset_dir", required=True)
     parser.add_argument("--manifest", required=True)
+    parser.add_argument("--instr", action="store_true", help="enable instrumentation", default=False)
     args = parser.parse_args()
     return args
 
@@ -34,11 +35,12 @@ def main():
     for result in results:
         hypotheses.append(array.array('q', bytes.fromhex(result["data"])).tolist())
         references.append(manifest[result["qsl_idx"]]["transcript"])
-        blob = {}
-        blob['hypothesis'] = hypotheses[-1]
-        blob['reference'] = references[-1]
-        blob['result'] = result
-        instrumentation.append(blob)
+        if args.instr:
+            blob = {}
+            blob['hypothesis'] = hypotheses[-1]
+            blob['reference'] = references[-1]
+            blob['result'] = result
+            instrumentation.append(blob)
     hypotheses = __gather_predictions([hypotheses], labels=labels)
     references = __gather_predictions([references], labels=labels)
     d = dict(predictions=hypotheses,
@@ -47,8 +49,9 @@ def main():
     wer = process_evaluation_epoch(d)
     print("Word Error Rate:", wer)
 
-    with open('accuracy_instr.json', 'w') as save_file:
-        json.dump({'wer': wer, 'samples': instrumentation}, save_file, indent=2, sort_keys=True)
+    if args.instr:
+        with open('accuracy_instr.json', 'w') as save_file:
+            json.dump({'wer': wer, 'samples': instrumentation}, save_file, indent=2, sort_keys=True)
 
 if __name__ == '__main__':
     main()

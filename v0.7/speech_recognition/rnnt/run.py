@@ -41,6 +41,7 @@ def get_args():
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--perf_count", type=int, default=None)
     parser.add_argument("--log_dir", required=True)
+    parser.add_argument("--instr", action="store_true", help="enable instrumentation", default=False)
     args = parser.parse_args()
     return args
 
@@ -58,7 +59,7 @@ def main():
     if args.backend == "pytorch":
         from pytorch_SUT import PytorchSUT
         sut = PytorchSUT(args.pytorch_config_toml, args.pytorch_checkpoint,
-                         args.dataset_dir, args.manifest, args.perf_count)
+                         args.dataset_dir, args.manifest, args.perf_count, args.instr)
     else:
         raise ValueError("Unknown backend: {:}".format(args.backend))
 
@@ -83,8 +84,9 @@ def main():
     print("Running Loadgen test...")
     lg.StartTestWithLogSettings(sut.sut, sut.qsl.qsl, settings, log_settings)
 
-    if args.accuracy:
-        cmd = f"{PYTHON} {RNNT_DIR}/accuracy_eval.py --log_dir {log_path} --dataset_dir {args.dataset_dir} --manifest {args.manifest}"
+    setinstr = '--instr' if args.instr else ''
+    if args.accuracy or args.instr:
+        cmd = f"{PYTHON} {RNNT_DIR}/accuracy_eval.py --log_dir {log_path} --dataset_dir {args.dataset_dir} --manifest {args.manifest} " + setinstr
         print(f"Running accuracy script: {cmd}")
         subprocess.check_call(cmd, shell=True)
 
