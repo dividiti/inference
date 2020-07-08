@@ -117,12 +117,12 @@ class PytorchSUT:
                 if self.instr:
                     pre, post, dec = self.greedy_decoder._model.instr.get_timings()
                     sample = {}
-                    sample['exe_time'] = batch_end - batch_start
-                    sample['qsl_idx'] = query_sample.index
-                    sample['query_id'] = query_sample.id
+                    sample['total_time'] = batch_end - batch_start
                     sample['pre_time'] = pre
                     sample['post_time'] = post
                     sample['dec_time'] = dec
+                    sample['qsl_idx'] = query_sample.index
+                    sample['query_id'] = query_sample.id
 
                     self.samples.append(sample)
 
@@ -149,8 +149,8 @@ class PytorchSUT:
     def dump_instr(self):
         if self.instr:
             total_time = time.time() - self.start_time
-            with open("timing_instr.json", 'w') as instrfp:
-                json.dump({'total_time': total_time, 'samples': self.samples}, instrfp, indent=2)
+            with open("instr_timing.json", 'w') as instrfp:
+                json.dump({'execution_time': total_time, 'samples': self.samples}, instrfp, indent=2)
 
     def __del__(self):
         lg.DestroySUT(self.sut)

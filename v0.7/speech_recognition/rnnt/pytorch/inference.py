@@ -143,7 +143,7 @@ def eval(
 
             if args.instr:
                 pre, post, dec = greedy_decoder._model.instr.get_timings()
-                t_samplelist_e[0]['exe_time'] = (batch_end - batch_start)
+                t_samplelist_e[0]['total_time'] = (batch_end - batch_start)
                 for i in range(len(t_samplelist_e)):
                     t_samplelist_e[i]['batch']=it
                     t_samplelist_e[i]['seq']=i
@@ -183,10 +183,10 @@ def eval(
         run_end = time.time()
         wer = process_evaluation_epoch(_global_var_dict)
         if args.instr:
-            with open("rnnt_instr.json", 'w') as instrfp:
+            with open("instr_rnnt.json", 'w') as instrfp:
                 instrdata = {}
                 instrdata['wer']=wer
-                instrdata['total_time']=run_end - run_start
+                instrdata['execution_time']=run_end - run_start
                 instrdata['samples']=sampledata
                 instrdata['labels']=labels
                 json.dump(instrdata, instrfp, indent=2)

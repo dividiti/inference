@@ -50,7 +50,7 @@ def main():
     print("Word Error Rate:", wer)
 
     if args.instr:
-        with open('accuracy_instr.json', 'w') as save_file:
+        with open('instr_accuracy.json', 'w') as save_file:
             json.dump({'wer': wer, 'samples': instrumentation}, save_file, indent=2, sort_keys=True)
 
 if __name__ == '__main__':
