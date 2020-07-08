@@ -140,12 +140,17 @@ def eval(
             batch_start = time.time()
             logits, logits_lens, t_predictions_e = greedy_decoder(t_audio_signal_e, t_a_sig_length_e)
             batch_end = time.time()
+
             if args.instr:
+                pre, post, dec = greedy_decoder._model.instr.get_timings()
                 t_samplelist_e[0]['exe_time'] = (batch_end - batch_start)
                 for i in range(len(t_samplelist_e)):
                     t_samplelist_e[i]['batch']=it
                     t_samplelist_e[i]['seq']=i
                     t_samplelist_e[i]['prediction']=t_predictions_e[i]
+                    t_samplelist_e[i]['pre_time']=pre
+                    t_samplelist_e[i]['post_time']=post
+                    t_samplelist_e[i]['dec_time']=dec
                     sampledata.append(t_samplelist_e[i])
 
 #            logits, logits_lens, t_predictions_e = greedy_decoder(padded, t_a_sig_length_e)
@@ -237,7 +242,8 @@ def main(args):
     model = RNNT(
         feature_config=featurizer_config,
         rnnt=model_definition['rnnt'],
-        num_classes=len(rnnt_vocab)
+        num_classes=len(rnnt_vocab),
+        instr=args.instr
     )
 
     if args.ckpt is not None:

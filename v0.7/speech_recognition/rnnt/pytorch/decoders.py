@@ -58,6 +58,8 @@ class ScriptGreedyDecoder(torch.nn.Module):
         Returns:
             list containing batch number of sentences (strings).
         """
+        self._model.instr.log_dec_init()
+
         # Apply optional preprocessing
 
         logits, logits_lens = self._model.encoder(x, out_lens)

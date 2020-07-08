@@ -8,6 +8,7 @@ from rnn import rnn
 from rnn import StackTime
 from naive_lstm import NaiveStackedLSTM
 
+import rnnt_logging
 
 class RNNT(torch.nn.Module):
     def __init__(self, rnnt=None, num_classes=1, **kwargs):
@@ -21,6 +22,11 @@ class RNNT(torch.nn.Module):
             in_features = feat_config['features'] * \
                 feat_config.get("frame_splicing", 1)
 
+        if kwargs.get("instr", False):
+           self.instr = rnnt_logging.Logging()
+        else:
+           self.instr = rnnt_logging.DummyLogging()
+
         self.encoder = Encoder(in_features,
             rnnt["encoder_n_hidden"],
             rnnt["encoder_pre_rnn_layers"],
@@ -32,6 +38,7 @@ class RNNT(torch.nn.Module):
             rnnt["dropout"],
             None if "dump_pre" not in rnnt else rnnt["dump_pre"],
             None if "dump_post" not in rnnt else rnnt["dump_post"],
+            self.instr
         )
 
         self.prediction = Prediction(
@@ -43,6 +50,7 @@ class RNNT(torch.nn.Module):
             rnnt["rnn_type"],
             rnnt["dropout"],
             False if "dump_dec" not in rnnt else rnnt["dump_dec"],
+            self.instr
         )
 
         self.joint = Joint(
@@ -79,7 +87,7 @@ class Encoder(torch.nn.Module):
     def __init__(self, in_features, encoder_n_hidden,
                  encoder_pre_rnn_layers, encoder_post_rnn_layers,
                  forget_gate_bias, norm, rnn_type, encoder_stack_time_factor,
-                 dropout, dump_pre, dump_post):
+                 dropout, dump_pre, dump_post, instr):
         super().__init__()
         self.pre_rnn = rnn(
             rnn=rnn_type,
@@ -103,6 +111,8 @@ class Encoder(torch.nn.Module):
         )
         self.call_pre_rnn = (self.pre_rnn if not dump_pre else DumpRNN( self.pre_rnn, dump_pre))
         self.call_post_rnn = (self.post_rnn if not dump_post else DumpRNN( self.post_rnn, dump_post))
+
+        self.instr = instr
 
         self.naive_lstm_pre = None
         hotswap_pre = os.environ.get('CK_RNNT_HOTSWAP_PRE', 'None')
@@ -129,16 +139,20 @@ class Encoder(torch.nn.Module):
 
     def forward(self, x_padded: torch.Tensor, x_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         x_padded, _ = self.call_pre_rnn(x_padded, None)
+        self.instr.log_pre_start()
         x_padded, x_lens = self.stack_time(x_padded, x_lens)
+        self.instr.log_pre_end()
         # (T, B, H)
+        self.instr.log_post_start()
         x_padded, _ = self.call_post_rnn(x_padded, None)
+        self.instr.log_post_end()
         # (B, T, H)
         x_padded = x_padded.transpose(0, 1)
         return x_padded, x_lens
 
 class Prediction(torch.nn.Module):
     def __init__(self, vocab_size, n_hidden, pred_rnn_layers,
-                 forget_gate_bias, norm, rnn_type, dropout, dump_dec):
+                 forget_gate_bias, norm, rnn_type, dropout, dump_dec, instr):
         super().__init__()
         self.embed = torch.nn.Embedding(vocab_size - 1, n_hidden)
         self.n_hidden = n_hidden
@@ -159,6 +173,8 @@ class Prediction(torch.nn.Module):
             print("LSTM DEC: Swapping to Naive implementation")
             self.naive_lstm_dec  = NaiveStackedLSTM(input_size=n_hidden, hidden_size=n_hidden,
                                                num_layers=pred_rnn_layers, dropout=0.0)
+
+        self.instr = instr
 
     def hotswap_init(self):
         if self.naive_lstm_dec != None:
@@ -203,7 +219,9 @@ class Prediction(torch.nn.Module):
         #    ]
 
         y = y.transpose(0, 1)  # .contiguous()   # (U + 1, B, H)
+        self.instr.log_dec_start()
         g, hid = self.call_dec_rnn(y, state)
+        self.instr.log_dec_end()
         g = g.transpose(0, 1)  # .contiguous()   # (B, U + 1, H)
         # del y, state
         return g, hid

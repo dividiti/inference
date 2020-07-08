@@ -68,7 +68,8 @@ class PytorchSUT:
         model = RNNT(
             feature_config=featurizer_config,
             rnnt=config['rnnt'],
-            num_classes=len(rnnt_vocab)
+            num_classes=len(rnnt_vocab),
+            instr=enable_instr
         )
         model.load_state_dict(load_and_migrate_checkpoint(checkpoint_path),
                               strict=False)
@@ -113,11 +114,14 @@ class PytorchSUT:
                 batch_end = time.time()
 
                 if self.instr:
+                    pre, post, dec = self.greedy_decoder._model.instr.get_timings()
                     sample = {}
                     sample['exe_time'] = batch_end - batch_start
                     sample['qsl_idx'] = query_sample.index
                     sample['query_id'] = query_sample.id
-                    sample['query_count'] = query_count
+                    sample['pre_time'] = pre
+                    sample['post_time'] = post
+                    sample['dec_time'] = dec
 
                     self.samples.append(sample)
 
