@@ -92,6 +92,7 @@ class PytorchSUT:
 
         self.instr = enable_instr
         self.samples = []
+        self.start_time = time.time()
 
     def issue_queries(self, query_samples):
         query_count = 0
@@ -147,8 +148,9 @@ class PytorchSUT:
 
     def dump_instr(self):
         if self.instr:
-          with open("timing_instr.json", 'w') as instrfp:
-              json.dump(self.samples, instrfp, indent=2)
+            total_time = time.time() - self.start_time
+            with open("timing_instr.json", 'w') as instrfp:
+                json.dump({'total_time': total_time, 'samples': self.samples}, instrfp, indent=2)
 
     def __del__(self):
         lg.DestroySUT(self.sut)

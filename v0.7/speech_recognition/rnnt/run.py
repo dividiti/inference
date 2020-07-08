@@ -68,7 +68,7 @@ def main():
     settings.FromConfig(args.mlperf_conf, "rnnt", args.scenario)
     settings.FromConfig(args.user_conf, "rnnt", args.scenario)
 
-    if args.accuracy:
+    if args.accuracy or args.instr:
         settings.mode = lg.TestMode.AccuracyOnly
     else:
         settings.mode = lg.TestMode.PerformanceOnly
