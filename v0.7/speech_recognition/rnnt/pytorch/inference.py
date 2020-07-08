@@ -55,7 +55,7 @@ def parse_args():
     parser.add_argument("--logits_save_to", default=None,
                         type=str, help="if specified will save logits to path")
     parser.add_argument("--seed", default=42, type=int, help='seed')
-    parser.add_argument("--max_duration", default=3600.0, type=float, help='seed')
+    parser.add_argument("--max_duration", default=3600.0, type=float, help='max duration of sample')
     parser.add_argument("--cuda",
                         action='store_true', help="use cuda", default=False)
     parser.add_argument("--runtime", choices=["onnxruntime", "pytorch", "torchscript"])
