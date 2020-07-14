@@ -6,7 +6,10 @@ import os
 
 from rnn import rnn
 from rnn import StackTime
-from naive_lstm import NaiveStackedLSTM
+
+from lstm_rnnt_pre import PluginLstmRnntPre
+from lstm_rnnt_post import PluginLstmRnntPost
+from lstm_rnnt_dec import PluginLstmRnntDec
 
 import rnnt_logging
 
@@ -64,9 +67,6 @@ class RNNT(torch.nn.Module):
     def forward(self, x_padded: torch.Tensor, x_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.encoder(x_padded, x_lens)
 
-    def hotswap_init(self):
-        self.encoder.hotswap_init()
-        self.prediction.hotswap_init()
 
 class DumpRNN():
     def __init__(self, fn, prefix):
@@ -109,32 +109,14 @@ class Encoder(torch.nn.Module):
             norm_first_rnn=True,
             dropout=dropout,
         )
-        self.call_pre_rnn = (self.pre_rnn if not dump_pre else DumpRNN( self.pre_rnn, dump_pre))
-        self.call_post_rnn = (self.post_rnn if not dump_post else DumpRNN( self.post_rnn, dump_post))
+
+        self.call_pre_rnn  = PluginLstmRnntPre()
+        self.call_post_rnn = PluginLstmRnntPost()
+
+        self.call_pre_rnn = (self.call_pre_rnn if not dump_pre else DumpRNN( self.call_pre_rnn, dump_pre))
+        self.call_post_rnn = (self.call_post_rnn if not dump_post else DumpRNN( self.call_post_rnn, dump_post))
 
         self.instr = instr
-
-        self.naive_lstm_pre = None
-        hotswap_pre = os.environ.get('CK_RNNT_HOTSWAP_PRE', 'None')
-        if hotswap_pre == 'Naive':
-            print("LSTM PRE: Swapping to Naive implementation")
-            self.naive_lstm_pre  = NaiveStackedLSTM(input_size=in_features, hidden_size=encoder_n_hidden,
-                                               num_layers=encoder_pre_rnn_layers, dropout=0.0)
-
-        self.naive_lstm_post = None
-        hotswap_post = os.environ.get('CK_RNNT_HOTSWAP_POST', 'None')
-        if hotswap_post == 'Naive':
-            print("LSTM POST: Swapping to Naive implementation")
-            self.naive_lstm_post = NaiveStackedLSTM(input_size=encoder_stack_time_factor * encoder_n_hidden, hidden_size=encoder_n_hidden,
-                                               num_layers=encoder_post_rnn_layers, dropout=0.0)
-
-    def hotswap_init(self):
-        if self.naive_lstm_pre != None:
-            self.naive_lstm_pre.set_weights(self.pre_rnn.lstm)
-            self.pre_rnn.lstm = self.naive_lstm_pre
-        if self.naive_lstm_post != None:
-            self.naive_lstm_post.set_weights(self.post_rnn.lstm)
-            self.post_rnn.lstm = self.naive_lstm_post
 
 
     def forward(self, x_padded: torch.Tensor, x_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -165,21 +147,13 @@ class Prediction(torch.nn.Module):
             forget_gate_bias=forget_gate_bias,
             dropout=dropout,
         )
-        self.call_dec_rnn = (self.dec_rnn if not dump_dec else DumpRNN( self.dec_rnn, dump_dec))
 
-        self.naive_lstm_dec = None
-        hotswap_dec = os.environ.get('CK_RNNT_HOTSWAP_DEC', 'None')
-        if hotswap_dec == 'Naive':
-            print("LSTM DEC: Swapping to Naive implementation")
-            self.naive_lstm_dec  = NaiveStackedLSTM(input_size=n_hidden, hidden_size=n_hidden,
-                                               num_layers=pred_rnn_layers, dropout=0.0)
+        self.call_dec_rnn  = PluginLstmRnntDec()
+
+        self.call_dec_rnn = (self.call_dec_rnn if not dump_dec else DumpRNN( self.call_dec_rnn, dump_dec))
 
         self.instr = instr
 
-    def hotswap_init(self):
-        if self.naive_lstm_dec != None:
-            self.naive_lstm_dec.set_weights(self.dec_rnn.lstm)
-            self.dec_rnn.lstm = self.naive_lstm_dec
 
     def forward(self, y: Optional[torch.Tensor],
                 state: Optional[Tuple[torch.Tensor, torch.Tensor]] = None) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
