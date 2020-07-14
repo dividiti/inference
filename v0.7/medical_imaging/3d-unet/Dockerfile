@@ -1,4 +1,5 @@
 # Copyright (c) 2020, NVIDIA CORPORATION.  All rights reserved.
+# Copyright (c) 2020, Intel Corporation, All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,7 +28,13 @@ RUN cd /tmp \
  && rm -rf inference
 
 # Install dependencies
-RUN python3 -m pip install onnx onnxruntime numpy==1.18.0 Pillow==7.0.0
+RUN python3 -m pip install wrapt --upgrade --ignore-installed
+RUN python3 -m pip install onnx numpy==1.18.0 Pillow==7.0.0 tensorflow
+RUN python3 -m pip install tensorflow-addons https://github.com/onnx/onnx-tensorflow/archive/master.zip
+
+# Install onnxruntime
+# TODO: Switch to release version with 3D TransposedConvolution support.
+RUN python3 -m pip install -i https://test.pypi.org/simple/ ort-nightly
 
 # Install nnUnet
 COPY nnUnet /workspace/nnUnet
@@ -35,6 +42,13 @@ RUN cd /workspace/nnUnet \
  && python3 -m pip install -e . \
  && cd /workspace \
  && rm -rf nnUnet
+
+# Install OpenVINO
+RUN wget https://apt.repos.intel.com/openvino/2020/GPG-PUB-KEY-INTEL-OPENVINO-2020 \
+ && apt-key add GPG-PUB-KEY-INTEL-OPENVINO-2020 \
+ && echo "deb https://apt.repos.intel.com/openvino/2020 all main" > /etc/apt/sources.list.d/intel-openvino-2020.list \
+ && apt-get update \
+ && apt-get install -y intel-openvino-runtime-ubuntu18-2020.3.194
 
 # Add user
 ARG GID
@@ -46,4 +60,5 @@ RUN echo root:root | chpasswd \
  && useradd -G sudo -g ${GID} -u ${UID} -m ${USER} \
  && echo ${USER}:${USER} | chpasswd \
  && echo -e "\nexport PS1=\"(mlperf) \\u@\\h:\\w\\$ \"" | tee -a /home/${USER}/.bashrc \
- && echo -e "\n%sudo ALL=(ALL:ALL) NOPASSWD:ALL\n" | tee -a /etc/sudoers
+ && echo -e "\n%sudo ALL=(ALL:ALL) NOPASSWD:ALL\n" | tee -a /etc/sudoers \
+ && echo -e "source /opt/intel/openvino/bin/setupvars.sh" | tee -a /home/${USER}/.bashrc

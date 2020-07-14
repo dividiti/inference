@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright (c) 2020 NVIDIA CORPORATION. All rights reserved.
+# Copyright (c) 2020 INTEL CORPORATION. All rights reserved.
 # Copyright 2020 Division of Medical Image Computing, German Cancer Research Center (DKFZ), Heidelberg, Germany
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,17 +22,30 @@ sys.path.insert(0, os.getcwd())
 
 import mlperf_loadgen as lg
 import numpy as np
-import onnxruntime
 
 from brats_QSL import get_brats_QSL
 
-class _3DUNET_ONNXRuntime_SUT():
+from openvino.inference_engine import IECore
+from scipy.special import softmax
+
+class _3DUNET_OV_SUT():
     def __init__(self, model_path, preprocessed_data_dir, performance_count):
-        print("Loading ONNX model...")
-        self.sess = onnxruntime.InferenceSession(model_path)
+        print("Loading OV model...")
+
+        model_xml = model_path
+        model_bin = os.path.splitext(model_xml)[0] + '.bin'
+        
+        ie = IECore()
+        net = ie.read_network(model=model_xml, weights=model_bin)
+
+        self.input_name = next(iter(net.inputs))
+        self.output_name = 'output'
+
+        self.exec_net = ie.load_network(network=net, device_name='CPU')
 
         print("Constructing SUT...")
-        self.sut = lg.ConstructSUT(self.issue_queries, self.flush_queries, self.process_latencies)
+        self.sut = lg.ConstructSUT(self.issue_queries, self.flush_queries,
+                                   self.process_latencies)
         self.qsl = get_brats_QSL(preprocessed_data_dir, performance_count)
         print("Finished constructing SUT.")
 
@@ -40,16 +53,16 @@ class _3DUNET_ONNXRuntime_SUT():
         for i in range(len(query_samples)):
             data = self.qsl.get_features(query_samples[i].index)
 
-            print("Processing sample id {:d} with shape = {:}".format(query_samples[i].index, data.shape))
+            print("Processing sample id {:d} with shape = {:}".format(
+                query_samples[i].index, data.shape))
 
-            # Follow the PyTorch implementation.
-            # The ONNX file has five outputs, but we only care about the one named "output".
-            before_softmax = self.sess.run(["output"], {"input": data[np.newaxis, ...]})[0]
-            softmax = (np.exp(before_softmax) / np.sum(np.exp(before_softmax), axis=0, keepdims=True)).astype(np.float16)
+            before_softmax = self.exec_net.infer(inputs={self.input_name: data[np.newaxis, ...]})[self.output_name]
+            after_softmax = softmax(before_softmax, axis=1).astype(np.float16)
 
-            response_array = array.array("B", softmax.tobytes())
+            response_array = array.array("B", after_softmax.tobytes())
             bi = response_array.buffer_info()
-            response = lg.QuerySampleResponse(query_samples[i].id, bi[0], bi[1])
+            response = lg.QuerySampleResponse(query_samples[i].id, bi[0],
+                                              bi[1])
             lg.QuerySamplesComplete([response])
 
     def flush_queries(self):
@@ -58,5 +71,6 @@ class _3DUNET_ONNXRuntime_SUT():
     def process_latencies(self, latencies_ns):
         pass
 
-def get_onnxruntime_sut(model_path, preprocessed_data_dir, performance_count):
-    return _3DUNET_ONNXRuntime_SUT(model_path, preprocessed_data_dir, performance_count)
+
+def get_ov_sut(model_path, preprocessed_data_dir, performance_count):
+    return _3DUNET_OV_SUT(model_path, preprocessed_data_dir, performance_count)
