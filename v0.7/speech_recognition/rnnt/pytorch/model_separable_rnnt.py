@@ -120,10 +120,10 @@ class Encoder(torch.nn.Module):
 
 
     def forward(self, x_padded: torch.Tensor, x_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        x_padded, _ = self.call_pre_rnn(x_padded, None)
         self.instr.log_pre_start()
-        x_padded, x_lens = self.stack_time(x_padded, x_lens)
+        x_padded, _ = self.call_pre_rnn(x_padded, None)
         self.instr.log_pre_end()
+        x_padded, x_lens = self.stack_time(x_padded, x_lens)
         # (T, B, H)
         self.instr.log_post_start()
         x_padded, _ = self.call_post_rnn(x_padded, None)
