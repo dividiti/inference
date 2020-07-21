@@ -7,10 +7,6 @@ import os
 from rnn import rnn
 from rnn import StackTime
 
-from lstm_rnnt_pre import PluginLstmRnntPre
-from lstm_rnnt_post import PluginLstmRnntPost
-from lstm_rnnt_dec import PluginLstmRnntDec
-
 import rnnt_logging
 
 class RNNT(torch.nn.Module):
@@ -39,8 +35,6 @@ class RNNT(torch.nn.Module):
             rnnt["rnn_type"],
             rnnt["encoder_stack_time_factor"],
             rnnt["dropout"],
-            None if "dump_pre" not in rnnt else rnnt["dump_pre"],
-            None if "dump_post" not in rnnt else rnnt["dump_post"],
             self.instr
         )
 
@@ -52,7 +46,6 @@ class RNNT(torch.nn.Module):
             None if "norm" not in rnnt else rnnt["norm"],
             rnnt["rnn_type"],
             rnnt["dropout"],
-            False if "dump_dec" not in rnnt else rnnt["dump_dec"],
             self.instr
         )
 
@@ -68,7 +61,7 @@ class RNNT(torch.nn.Module):
         return self.encoder(x_padded, x_lens)
 
 
-class DumpRNN():
+class DumpRNN(torch.nn.Module):
     def __init__(self, fn, prefix):
         super().__init__()
         self.fn = fn
@@ -87,7 +80,7 @@ class Encoder(torch.nn.Module):
     def __init__(self, in_features, encoder_n_hidden,
                  encoder_pre_rnn_layers, encoder_post_rnn_layers,
                  forget_gate_bias, norm, rnn_type, encoder_stack_time_factor,
-                 dropout, dump_pre, dump_post, instr):
+                 dropout, instr):
         super().__init__()
         self.pre_rnn = rnn(
             rnn=rnn_type,
@@ -110,11 +103,24 @@ class Encoder(torch.nn.Module):
             dropout=dropout,
         )
 
-        self.call_pre_rnn  = PluginLstmRnntPre()
-        self.call_post_rnn = PluginLstmRnntPost()
+        # if there are plugins available, load them
+        try:
+            from lstm_rnnt_pre import PluginLstmRnntPre
+            self.call_pre_rnn = PluginLstmRnntPre()
+        except:
+            self.call_pre_rnn = self.pre_rnn
 
-        self.call_pre_rnn = (self.call_pre_rnn if not dump_pre else DumpRNN( self.call_pre_rnn, dump_pre))
-        self.call_post_rnn = (self.call_post_rnn if not dump_post else DumpRNN( self.call_post_rnn, dump_post))
+        try:
+            from lstm_rnnt_post import PluginLstmRnntPost
+            self.call_post_rnn = PluginLstmRnntPost()
+        except:
+            self.call_post_rnn = self.post_rnn
+
+        # enable dumping if required
+        dump_pre = os.environ.get('CK_RNNT_DUMP_PRE', '')
+        self.call_pre_rnn = (self.call_pre_rnn if dump_pre == '' else DumpRNN( self.call_pre_rnn, dump_pre))
+        dump_post = os.environ.get('CK_RNNT_DUMP_POST', '')
+        self.call_post_rnn = (self.call_post_rnn if dump_post == '' else DumpRNN( self.call_post_rnn, dump_post))
 
         self.instr = instr
 
@@ -134,7 +140,7 @@ class Encoder(torch.nn.Module):
 
 class Prediction(torch.nn.Module):
     def __init__(self, vocab_size, n_hidden, pred_rnn_layers,
-                 forget_gate_bias, norm, rnn_type, dropout, dump_dec, instr):
+                 forget_gate_bias, norm, rnn_type, dropout, instr):
         super().__init__()
         self.embed = torch.nn.Embedding(vocab_size - 1, n_hidden)
         self.n_hidden = n_hidden
@@ -148,10 +154,18 @@ class Prediction(torch.nn.Module):
             dropout=dropout,
         )
 
-        self.call_dec_rnn  = PluginLstmRnntDec()
+        # if there is a plugin available, load it
+        try:
+            from lstm_rnnt_dec import PluginLstmRnntDec
+            self.call_dec_rnn = PluginLstmRnntDec()
+        except:
+            self.call_dec_rnn = self.dec_rnn
 
-        self.call_dec_rnn = (self.call_dec_rnn if not dump_dec else DumpRNN( self.call_dec_rnn, dump_dec))
+        # enable dumping if required
+        dump_dec = os.environ.get('CK_RNNT_DUMP_DEC', '')
+        self.call_dec_rnn = (self.call_dec_rnn if dump_dec == '' else DumpRNN( self.call_dec_rnn, dump_dec))
 
+        # setup instrumentation
         self.instr = instr
 
 

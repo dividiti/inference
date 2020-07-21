@@ -71,9 +71,6 @@ pred_rnn_layers = 2
 forget_gate_bias = 1.0
 joint_n_hidden = 512
 dropout=0.32
-#dump_pre="./pre_"
-#dump_post="./post_"
-#dump_dec="./dec_"
 
 
 [labels]
