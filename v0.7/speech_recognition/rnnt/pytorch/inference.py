@@ -56,6 +56,7 @@ def parse_args():
                         type=str, help="if specified will save logits to path")
     parser.add_argument("--seed", default=42, type=int, help='seed')
     parser.add_argument("--max_duration", default=3600.0, type=float, help='max duration of sample')
+    parser.add_argument("--min_duration", default=0.1, type=float, help='min duration of sample')
     parser.add_argument("--cuda",
                         action='store_true', help="use cuda", default=False)
     parser.add_argument("--runtime", choices=["onnxruntime", "pytorch", "torchscript"])
@@ -219,6 +220,7 @@ def main(args):
     featurizer_config = model_definition['input_eval']
 
     featurizer_config['max_duration'] = args.max_duration
+    featurizer_config['min_duration'] = args.min_duration
 
     if args.pad_to is not None:
         featurizer_config['pad_to'] = args.pad_to if args.pad_to >= 0 else "max"
