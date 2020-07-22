@@ -26,6 +26,7 @@ import numpy as np
 import pickle
 import time
 import json
+import os
 
 from copy import deepcopy
 
@@ -138,6 +139,11 @@ def eval(
 #            print(t_a_sig_length_e)
 #            padded = torch.empty(2048, 1, 240, dtype=torch.float)
 #            padded[0:t_a_sig_length_e,0:1,0:240] = t_audio_signal_e
+
+            # Fudge to get filenames to the LSTMs for dumping
+            filename=os.path.splitext(os.path.basename(data[5][0]['audio_filepath'][0]))[0]
+            encoderdecoder.instr.dumping.set_filename(filename)
+
             batch_start = time.time()
             logits, logits_lens, t_predictions_e = greedy_decoder(t_audio_signal_e, t_a_sig_length_e)
             batch_end = time.time()

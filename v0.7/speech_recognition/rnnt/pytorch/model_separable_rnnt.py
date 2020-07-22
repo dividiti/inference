@@ -62,15 +62,21 @@ class RNNT(torch.nn.Module):
 
 
 class DumpRNN(torch.nn.Module):
-    def __init__(self, fn, prefix):
+    def __init__(self, fn, prefix, instr):
         super().__init__()
         self.fn = fn
         self.prefix = prefix
         self.count = 0
+        self.instr = instr
+        self.filename = instr.dumping.get_filename()
 
     def forward(self, in_padded: torch.Tensor, in_lens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        # if the filename changes, reset the counter
+        if self.instr.dumping.get_filename() != self.filename:
+            self.filename = self.instr.dumping.get_filename()
+            self.count = 0
         out_padded, out_lens = self.fn(in_padded, in_lens)
-        torch.save((in_padded, in_lens, out_padded, out_lens), self.prefix + str(self.count).zfill(6) + ".pt")
+        torch.save((in_padded, in_lens, out_padded, out_lens), self.filename + '-' + self.prefix + str(self.count).zfill(4) + ".pt")
         self.count += 1
         return out_padded, out_lens
 
@@ -117,10 +123,10 @@ class Encoder(torch.nn.Module):
             self.call_post_rnn = self.post_rnn
 
         # enable dumping if required
-        dump_pre = os.environ.get('CK_RNNT_DUMP_PRE', '')
-        self.call_pre_rnn = (self.call_pre_rnn if dump_pre == '' else DumpRNN( self.call_pre_rnn, dump_pre))
-        dump_post = os.environ.get('CK_RNNT_DUMP_POST', '')
-        self.call_post_rnn = (self.call_post_rnn if dump_post == '' else DumpRNN( self.call_post_rnn, dump_post))
+        dump_pre = os.environ.get('CK_RNNT_DUMP_PRE', 'no') in [ 'yes', 'YES', 'ON', 'on', '1' ]
+        self.call_pre_rnn = (self.call_pre_rnn if not dump_pre else DumpRNN( self.call_pre_rnn, 'PRE', instr ))
+        dump_post = os.environ.get('CK_RNNT_DUMP_POST', 'no') in [ 'yes', 'YES', 'ON', 'on', '1' ]
+        self.call_post_rnn = (self.call_post_rnn if not dump_post else DumpRNN( self.call_post_rnn, 'POST', instr ))
 
         self.instr = instr
 
@@ -162,8 +168,8 @@ class Prediction(torch.nn.Module):
             self.call_dec_rnn = self.dec_rnn
 
         # enable dumping if required
-        dump_dec = os.environ.get('CK_RNNT_DUMP_DEC', '')
-        self.call_dec_rnn = (self.call_dec_rnn if dump_dec == '' else DumpRNN( self.call_dec_rnn, dump_dec))
+        dump_dec = os.environ.get('CK_RNNT_DUMP_DEC', 'no') in [ 'yes', 'YES', 'ON', 'on', '1' ]
+        self.call_dec_rnn = (self.call_dec_rnn if not dump_dec else DumpRNN( self.call_dec_rnn, 'DEC', instr))
 
         # setup instrumentation
         self.instr = instr
