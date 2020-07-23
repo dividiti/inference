@@ -30,8 +30,6 @@ import os
 
 from copy import deepcopy
 
-import torchvision
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Jasper')
@@ -98,10 +96,13 @@ def eval(
             # if it == 0:
             #     torch.onnx.export()
 
-            # TODO: Make this part of this scripted model
+            interim = audio_processor[0](data)
+
             (t_audio_signal_e, t_a_sig_length_e,
              transcript_list, t_transcript_e,
-             t_transcript_len_e, t_samplelist_e) = audio_processor(data)
+             t_transcript_len_e, t_samplelist_e) = audio_processor[1](interim)
+
+            # TODO: Make this part of this scripted model
 
             # with open("predict.txt", "w") as fh:
             #     fh.write(str(greedy_decoder._model.prediction.forward.inlined_graph))
@@ -287,7 +288,7 @@ def main(args):
     # These are just some very confusing transposes, that's all.
     # BxFxT -> TxBxF
     eval_transforms.append(lambda xs: [xs[0].permute(2, 0, 1), *xs[1:]])
-    eval_transforms = torchvision.transforms.Compose(eval_transforms)
+    #eval_transforms = torchvision.transforms.Compose(eval_transforms)
 
     if args.cuda:
         model.cuda()
