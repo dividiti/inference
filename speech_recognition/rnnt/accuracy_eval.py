@@ -38,6 +38,7 @@ def main():
         results = json.load(fh)
     hypotheses = []
     references = []
+    instrumentation = []
     for result in results:
         hypotheses.append(array.array(dtype_map[args.output_dtype], bytes.fromhex(result["data"])).tolist())
         references.append(manifest[result["qsl_idx"]]["transcript"])
