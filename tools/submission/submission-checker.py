@@ -665,7 +665,7 @@ def check_results_dir(config, filter_submitter, csv, debug=False):
                             try:
                                 is_valid, r = check_performance_dir(config, mlperf_model, perf_path)
                             except Exception as e:
-                                log.error("%s caused expection in check_performance_dir: %s", perf_path, e)
+                                log.error("%s caused exception in check_performance_dir: %s", perf_path, e)
                                 is_valid, r = False, None
 
                             if is_valid:
