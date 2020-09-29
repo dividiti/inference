@@ -605,7 +605,9 @@ def check_results_dir(config, filter_submitter, csv, debug=False):
                         continue
 
                     all_scenarios = set(list(required_scenarios) + list(config.get_optional(mlperf_model)))
-                    for scenario in list_dir(results_path, system_desc, model_name):
+                    # Start processing scenarios from SingleStream (last in alphabetical order).
+                    sorted_scenarios = sorted(list_dir(results_path, system_desc, model_name), reverse=True)
+                    for scenario in sorted_scenarios:
                         # some submissions in v0.5 use lower case scenarios - map them for now
                         scenario_fixed = SCENARIO_MAPPING.get(scenario, scenario)
 
@@ -673,6 +675,17 @@ def check_results_dir(config, filter_submitter, csv, debug=False):
                                 required_scenarios.discard(scenario_fixed)
                             else:
                                 log.error("%s has issues", perf_path)
+
+                        if system_type == 'edge' and scenario_fixed in [ 'Offline', 'MultiStream' ]:
+                            name_singlestream = os.path.join(results_path, system_desc, model_name, 'singlestream')
+                            name_SingleStream = os.path.join(results_path, system_desc, model_name, 'SingleStream')
+                            result_singlestream = results.get(name_singlestream) or results.get(name_SingleStream)
+                            if results[name] == result_singlestream: # result is to be inferred
+                                if scenario_fixed == 'Offline':
+                                    results[name] = 1000 / results[name]
+                                elif scenario_fixed == 'MultiStream':
+                                    target_latency_ms = 1e-6 * config.latency_constraint.get(mlperf_model, dict()).get(scenario_fixed)
+                                    results[name] = int(target_latency_ms / results[name])
 
                         if results.get(name):
                             if accuracy_is_valid:
